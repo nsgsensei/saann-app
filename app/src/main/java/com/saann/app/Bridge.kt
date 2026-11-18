@@ -38,6 +38,8 @@ class Bridge(private val act: Activity) {
 
     // Called from Python: shows an Allow / Deny dialog and waits for the answer.
     fun confirm(msg: String): String {
+        val bar = OverlayService.instance
+        if (bar != null) return bar.confirm(msg)
         val latch = CountDownLatch(1)
         var answer = "n"
         act.runOnUiThread {
@@ -66,6 +68,7 @@ class Bridge(private val act: Activity) {
                 "open_url" -> openUrl(a)
                 "speak" -> speak(a)
                 "wifi" -> wifi()
+                "status" -> { OverlayService.instance?.setStatus(a); "ok" }
                 else -> Screen.call(act, name, a, b)
             }
         } catch (e: Exception) {

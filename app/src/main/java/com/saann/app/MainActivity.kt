@@ -68,10 +68,12 @@ class MainActivity : Activity() {
                 if (!Python.isStarted()) Python.start(AndroidPlatform(this))
                 py = Python.getInstance().getModule("app_main")
                 py.callAttr("init", filesDir.absolutePath, Bridge(this))
+                Host.py = py
                 runOnUiThread {
                     ready = true
                     send.isEnabled = true
                     add("SAANN", "Ready.")
+                    startBar()
                 }
             } catch (e: Throwable) {
                 runOnUiThread { add("error", e.toString()) }
@@ -83,6 +85,10 @@ class MainActivity : Activity() {
             if (t.isEmpty() || !ready) return@setOnClickListener
             input.setText("")
             add("you", t)
+            if (t.startsWith("/bar")) {
+                add("SAANN", BarPrefs.command(this, t))
+                return@setOnClickListener
+            }
             send.isEnabled = false
             Thread {
                 val r = try {
@@ -96,6 +102,10 @@ class MainActivity : Activity() {
                 }
             }.start()
         }
+    }
+
+    private fun startBar() {
+        add("SAANN", BarPrefs.start(this))
     }
 
     private fun add(who: String, text: String) {

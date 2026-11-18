@@ -12,6 +12,8 @@ from engine import phone, screen
 from engine.runner import _parse, _cloud_allowed, Budget
 
 AGENT = "phone-agent"
+STATUS = lambda text: None
+STOP = {"flag": False}
 MAX_STEPS = 15
 MAX_SENSITIVE = 10
 TYPES = {"string": str, "integer": int}
@@ -130,10 +132,14 @@ def choose(goal, history, private):
     return None, why
 
 def run(goal, max_steps=MAX_STEPS):
+    STOP["flag"] = False
+    STATUS("Working: " + goal[:50])
     steps, history, seen, sensitive, private = [], [], set(), 0, False
     q = quick(goal)
     plan = [q] if q else None
     for i in range(max_steps):
+        if STOP["flag"]:
+            return _end(goal, False, "Stopped.", steps)
         if plan:
             tool_name, args = plan.pop(0)
             tier, say = "rules", ""
@@ -152,6 +158,7 @@ def run(goal, max_steps=MAX_STEPS):
             sensitive += 1
             if sensitive > MAX_SENSITIVE:
                 return _end(goal, False, "Too many sensitive actions in one task; stopped.", steps)
+        STATUS("Step %d: %s" % (i + 1, tool_name))
         res = call_tool(AGENT, tool_name, **args)
         if TOOLS[tool_name].get("private"):
             private = True
@@ -168,6 +175,7 @@ def run(goal, max_steps=MAX_STEPS):
     return _end(goal, False, "I stopped after %d steps without finishing." % max_steps, steps)
 
 def _end(goal, ok, answer, steps):
+    STATUS(("Done: " if ok else "Stopped: ") + answer[:70])
     log_event(AGENT, "agent.task", input=goal[:150], output=answer[:300],
               outcome="verified" if ok else "failed")
     return {"ok": ok, "answer": answer, "steps": steps}

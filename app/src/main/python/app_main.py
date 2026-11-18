@@ -18,8 +18,22 @@ def init(files_dir, bridge):
     builtins.input = lambda prompt="": bridge.confirm(str(prompt))
     import saann
     _state = saann.State()
+    from engine import agent
+
+    def _status(t):
+        try:
+            bridge.call("status", str(t), "")
+        except Exception:
+            pass
+
+    agent.STATUS = _status
     return "ready"
 
 def respond(msg):
     import saann
     return saann.respond(msg, _state)
+
+
+def stop():
+    from engine import agent
+    agent.STOP["flag"] = True
