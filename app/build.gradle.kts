@@ -6,6 +6,14 @@ plugins {
 
 android {
     namespace = "com.saann.app"
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
     compileSdk = 35
     defaultConfig {
         applicationId = "com.saann.app"
