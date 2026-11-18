@@ -8,10 +8,10 @@ def a11y_settings():
     phone._run(["saann-a11y-settings"])
     return "opened"
 
-@ptool("phone_open_app", "phone.write", "write", {"name": "string"},
+@ptool("phone_open_app", "phone.write", "write", {"app": "string"},
        "open an installed app by its name")
-def open_app(name):
-    return phone._run(["saann-open-app", _text(name, 60)])
+def open_app(app):
+    return phone._run(["saann-open-app", _text(app, 60)])
 
 @ptool("screen_read", "phone.screen", "read", {},
        "list the visible text, buttons and input fields on the current screen", private=True)
@@ -35,9 +35,9 @@ def screen_swipe(direction):
         raise ValueError("direction must be up, down, left or right")
     return phone._run(["saann-screen-swipe", direction])
 
-@ptool("screen_button", "phone.screen", "write", {"name": "string"},
+@ptool("screen_button", "phone.screen", "write", {"button": "string"},
        "press back, home, recents or notifications")
-def screen_button(name):
-    if name not in ("back", "home", "recents", "notifications"):
-        raise ValueError("name must be back, home, recents or notifications")
-    return phone._run(["saann-screen-button", name])
+def screen_button(button):
+    if button not in ("back", "home", "recents", "notifications"):
+        raise ValueError("button must be back, home, recents or notifications")
+    return phone._run(["saann-screen-button", button])

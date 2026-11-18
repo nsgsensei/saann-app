@@ -48,10 +48,10 @@ def quick(goal):
         return ("screen_read", {})
     m = re.fullmatch(r"(?:please )?go (back|home)", g)
     if m:
-        return ("screen_button", {"name": m.group(1)})
+        return ("screen_button", {"button": m.group(1)})
     m = re.fullmatch(r"(?:please )?(?:open|launch|start) (?:the |my )?(?!file|document|doc\b)([a-z0-9][a-z0-9 .&'-]{1,30})", g)
     if m:
-        return ("phone_open_app", {"name": re.sub(r" app$", "", m.group(1).strip())})
+        return ("phone_open_app", {"app": re.sub(r" app$", "", m.group(1).strip())})
     return None
 
 WANTS = re.compile(r"^(please |can you |could you )?(send|text|message|call|dial|copy|notify|"
