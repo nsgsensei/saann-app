@@ -28,4 +28,6 @@ def run(cmd, timeout=15):
         return _call("speak", cmd[1])
     if n == "termux-wifi-connectioninfo":
         return _call("wifi")
+    if n.startswith("saann-"):
+        return _call(n[6:].replace("-", "_"), *cmd[1:3])
     raise RuntimeError("%s is not available in the app yet" % n)

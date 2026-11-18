@@ -66,7 +66,7 @@ class Bridge(private val act: Activity) {
                 "open_url" -> openUrl(a)
                 "speak" -> speak(a)
                 "wifi" -> wifi()
-                else -> "ERR:not available in the app yet: $name"
+                else -> Screen.call(act, name, a, b)
             }
         } catch (e: Exception) {
             "ERR:" + (e.message ?: e.toString())
