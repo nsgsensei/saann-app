@@ -1,0 +1,3 @@
+{"id": "mind-layer", "version": "0.1.0", "type": "service", "enabled": true,
+ "depends_on": ["research-agent"], "tier": "pro", "permissions": ["network.read"],
+ "entry": "engine/mind.py"}

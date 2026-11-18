@@ -1,0 +1,48 @@
+{
+  "mode": "local",
+  "active_local": "qwen-1.5b",
+  "active_cloud": "claude-haiku",
+  "cloud_monthly_token_cap": 100000,
+  "models": [
+    {
+      "id": "qwen-0.5b",
+      "kind": "local",
+      "name": "Qwen2.5 0.5B (small, fast)",
+      "size_mb": 400,
+      "file": "qwen-0.5b.gguf",
+      "url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    },
+    {
+      "id": "qwen-1.5b",
+      "kind": "local",
+      "name": "Qwen2.5 1.5B (better, slower)",
+      "size_mb": 1000,
+      "file": "qwen-1.5b.gguf",
+      "url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+    },
+    {
+      "id": "claude-haiku",
+      "kind": "cloud",
+      "provider": "anthropic",
+      "name": "Claude Haiku 5.5 (cloud, fast, cheaper)",
+      "model": "claude-haiku-5-5"
+    },
+    {
+      "id": "claude-sonnet",
+      "kind": "cloud",
+      "provider": "anthropic",
+      "name": "Claude Sonnet 5.5 (cloud, stronger)",
+      "model": "claude-sonnet-5-5"
+    }
+  ],
+  "servers": {
+    "fast": {
+      "model": "qwen-0.5b",
+      "port": 8081
+    },
+    "main": {
+      "model": "qwen-1.5b",
+      "port": 8080
+    }
+  }
+}

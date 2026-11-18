@@ -1,0 +1,4 @@
+{"id": "phone-agent", "version": "0.1.0", "type": "agent", "enabled": true,
+ "depends_on": ["research-agent"], "tier": "pro",
+ "permissions": ["phone.read", "phone.write", "phone.private", "phone.send", "phone.call"],
+ "entry": "engine/agent.py"}

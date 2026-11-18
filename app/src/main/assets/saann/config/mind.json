@@ -1,0 +1,8 @@
+{
+  "sources": [
+    "https://en.wikipedia.org/wiki/Sydney_Harbour_Bridge"
+  ],
+  "stale_days": 30,
+  "reflect_every_min": 10,
+  "max_tries": 3
+}

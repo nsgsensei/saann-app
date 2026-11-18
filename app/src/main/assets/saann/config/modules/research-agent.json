@@ -1,0 +1,14 @@
+{
+ "id": "research-agent",
+ "version": "0.1.0",
+ "type": "agent",
+ "enabled": true,
+ "depends_on": [],
+ "tier": "free",
+ "permissions": [
+  "fs.read",
+  "fs.write",
+  "network.read"
+ ],
+ "entry": "agents/research/main.py"
+}

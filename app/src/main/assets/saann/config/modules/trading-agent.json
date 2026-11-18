@@ -1,0 +1,3 @@
+{"id": "trading-agent", "version": "0.1.0", "type": "agent",
+ "enabled": false, "depends_on": ["research-agent"], "tier": "addon",
+ "entry": "agents/trading/main.py"}
