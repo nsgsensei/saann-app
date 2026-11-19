@@ -310,6 +310,9 @@ class Brain:
             i, sim = self._match(enc)
             known = i >= 0 and sim >= self.cfg["match"]
             self.novelty = 1.0 if i < 0 else float(1 - sim)
+            cx = _cx_see(enc, learn)
+            if cx:
+                self.novelty = max(self.novelty, float(min(1.0, max(0.0, (max(cx.values()) - 1.0) / 3.0))))
             recalled = []
             if known:
                 recalled = [k for k in self.regions if self.has[k][i] and k not in enc]
@@ -337,6 +340,14 @@ class Brain:
                 out["next"] = self._predict(cid)
                 if recalled:
                     out["note"] = "this %s reminds me of something with %s" % ("+".join(enc), "+".join(recalled))
+            if cx:
+                out["surprise"] = round(max(cx.values()), 2)
+            try:
+                im = _cx_imagine(self, enc)
+                if im:
+                    out["imagined"] = im
+            except Exception:
+                pass
             out["ms"] = round((time.perf_counter() - t0) * 1000, 2)
             return out
 
@@ -400,7 +411,7 @@ class Brain:
             if not ok:
                 return None
             r = max(ok, key=lambda r: (r["good"] - 2 * r["bad"], r["good"]))
-            self.last = {"cid": cid, "resp": r["t"], "reflex": True}
+            self.last = {"cid": cid, "resp": r["t"], "reflex": True, "q": text, "ts": time.time()}
             self.act["cerebellum"] = 1.0
             self.events.append({"t": time.time(), "senses": ["language"], "c": cid,
                                 "label": "reflex", "new": False})
@@ -412,18 +423,20 @@ class Brain:
             got = self._lang_cid(text)
             if got is None or not response:
                 return
+            if _BAD.search(response):
+                return
             cid = got[0] if isinstance(got, tuple) else got
             lst = self.reflex.setdefault(cid, [])
             r = next((x for x in lst if x["t"] == response[:400]), None)
             if r is None:
-                r = {"t": response[:400], "good": 0, "bad": 0}
+                r = {"t": response[:400], "good": 0, "bad": 0, "q": text[:120]}
                 lst.append(r)
                 del lst[:-5]
             if verdict == "good":
                 r["good"] += 1
             elif verdict == "bad":
                 r["bad"] += 1
-            self.last = {"cid": cid, "resp": r["t"], "reflex": False}
+            self.last = {"cid": cid, "resp": r["t"], "reflex": False, "q": text, "ts": time.time()}
             self.act["prefrontal"] = min(1.0, self.act["prefrontal"] + 0.7)
 
     def feedback(self, good):
@@ -518,6 +531,11 @@ class Brain:
                    "dims": {k: r.dim for k, r in self.regions.items()}}
             (DIR / "state.json.tmp").write_text(json.dumps(doc))
             os.replace(DIR / "state.json.tmp", DIR / "state.json")
+            try:
+                if _CX is not None:
+                    _CX.save()
+            except Exception:
+                pass
 
     def load(self):
         try:
@@ -604,11 +622,482 @@ def command(msg):
         return b.status()
     if low == "/sleep":
         return str(b.consolidate())
+    if low.startswith("/brain size"):
+        return _cx_resize(low[11:].strip())
+    if low == "/brain cortex":
+        return _cx_status()
     if low == "/brain demo":
         return demo()
     return None
 
 # ---------------------------------------------------------------- demo and CLI
+
+POS = re.compile(r"^(thanks|thank you|thx|great|perfect|correct|exactly|nice|awesome|cool|yes+|yep|good (answer|job)|well done|that'?s (right|correct|it|good|helpful))\b", re.I)
+NEG = re.compile(r"^(no+\b|nope|wrong|incorrect|not (right|correct|quite)|bad answer|you'?re wrong|try again|nonsense|that'?s (wrong|not (right|correct|what i)))", re.I)
+CORR = re.compile(r"(?:it'?s|it is|actually|the answer is|should be|i meant|correct answer is)[ ,:]+(.+)$", re.I)
+
+def _nudge(b, last, good=0.0, bad=0.0):
+    lst = b.reflex.setdefault(last["cid"], [])
+    r = next((x for x in lst if x["t"] == last["resp"]), None)
+    if r is None:
+        r = {"t": last["resp"], "good": 0, "bad": 0}
+        lst.append(r)
+    r["good"] += good
+    r["bad"] += bad
+
+def _listen(b, text):
+    t = text.strip()
+    if not t or t.startswith("/"):
+        return None
+    with b.lock:
+        last = b.last
+        m = re.match(r"when i (?:say|ask) (.+?),? (?:you )?(?:say|answer|reply|respond)(?: with)? (.+)$", t, re.I)
+        if m:
+            q, a = m.group(1).strip(" \"'"), m.group(2).strip(" \"'")
+            b.learn(q, a, "good")
+            b.learn(q, a, "good")
+            return "Got it. When you say \"%s\" I will say \"%s\"." % (q[:50], a[:80])
+        m = re.match(r"(?:remember(?: that)?|note that|did you know(?: that)?)[ ,:]+(.+)$", t, re.I)
+        if m:
+            mm = re.match(r"((?:the )?.+?) (is|are) (.+)$", m.group(1).strip(" .!"), re.I)
+            if mm:
+                subj, verb, rest = mm.group(1), mm.group(2).lower(), mm.group(3)
+                b.learn("what %s %s" % (verb, subj), "%s %s %s" % (subj[:1].upper() + subj[1:], verb, rest), "good")
+                b.learn("what %s %s" % (verb, subj), "%s %s %s" % (subj[:1].upper() + subj[1:], verb, rest), "good")
+                return "Okay, I'll remember that."
+        words = len(t.split())
+        neg_m, pos_m = NEG.match(t), POS.match(t)
+        if last and neg_m:
+            c = CORR.search(t)
+            if c or words <= 4:
+                _nudge(b, last, bad=2)
+                b.reward(-0.5)
+                q = last.get("q")
+                if c and q:
+                    ans = c.group(1).strip(" .!")
+                    b.learn(q, ans, "good")
+                    b.learn(q, ans, "good")
+                    return "Thanks for correcting me. Next time I will say: %s" % ans[:80]
+                return "Understood, I won't repeat that answer."
+        if last and pos_m and words <= 4:
+            _nudge(b, last, good=1)
+            b.reward(0.5)
+            return "Glad that helped."
+        if last and not last.get("rated"):
+            q = last.get("q")
+            enc = b.regions["language"].encode(t)
+            qe = b.regions["language"].encode(q) if q else None
+            sim = float(enc @ qe) if enc is not None and qe is not None else 0.0
+            if sim >= 0.75:
+                _nudge(b, last, bad=0.5)
+            elif time.time() - last.get("ts", 0) < 300:
+                _nudge(b, last, good=0.2)
+            last["rated"] = True
+        return None
+
+listen = _safe(lambda text: _listen(get(), text))
+
+
+_TURNS = deque(maxlen=6)
+PRIVATE = re.compile(r"\b(sms|text message|messages?|clipboard|location|where am i|password|screen|otp|pin)\b", re.I)
+_OPEN = re.compile(r"^(sure|certainly|of course|absolutely|great question|well|okay|ok)[!,.]\s+", re.I)
+_CLOSE = re.compile(r"\s*(is there anything else|let me know if|feel free to|i hope this helps|if you have any (other )?questions)[^.!?]*[.!?]?\s*$", re.I)
+_AI = re.compile(r"\bas an? (ai|artificial intelligence)( language model| assistant)?,?\s*", re.I)
+_SELF = re.compile(r"\b(i am|i'm|i\u2019m) (qwen|an? (large )?language model|an? ai( language model| assistant)?|an? artificial intelligence( assistant)?|a virtual assistant)\b[^.!?]*", re.I)
+_MAKER = re.compile(r",?\s*(which was |that was )?(created|developed|made|trained|built) by (alibaba( cloud)?|openai|google|anthropic|meta)", re.I)
+
+def _persona_name():
+    try:
+        from engine import mind
+        return mind.persona()["name"]
+    except Exception:
+        return "SAANN"
+
+def _note_turn(msg, out):
+    if not msg or msg.startswith("/") or PRIVATE.search(msg):
+        return
+    _TURNS.append((msg[:120], str(out)[:120]))
+note_turn = _safe(_note_turn)
+
+def _context(message):
+    b = get()
+    name = _persona_name()
+    parts = ["You are %s, a learning assistant. Speak in first person as yourself. Use the recent conversation and what you know below. Never invent facts about yourself, your origin or the user; if you do not know, say so briefly.\n" % name]
+    if _TURNS:
+        parts.append("Recent conversation:\n" + "".join("User: %s\nYou: %s\n" % t for t in list(_TURNS)[-3:]))
+    with b.lock:
+        q = b.regions["language"].encode(message)
+        if q is not None and b.n:
+            has = b.has["language"][:b.n]
+            sims = np.where(has, b.mat["language"][:b.n] @ q, -1.0)
+            seen, lines = set(), []
+            for i in np.argsort(-sims)[:8]:
+                if sims[i] < 0.45:
+                    break
+                for r in b.reflex.get(b.meta[int(i)]["id"], []):
+                    if r["good"] >= 1 and r["good"] >= 2 * r["bad"] and r["t"] not in seen:
+                        seen.add(r["t"])
+                        lines.append("- %s -> %s" % (r.get("q", "something similar")[:80], r["t"][:120]))
+            if lines:
+                parts.append("What you have learned (trust this):\n" + "\n".join(lines[:3]) + "\n")
+    return "".join(parts)
+context = _safe(_context)
+
+def _refine(msg, reply):
+    if not reply or reply.startswith("(no answer"):
+        return reply
+    name = _persona_name()
+    t = _SELF.sub(lambda m: "I am " + name, reply)
+    t = _MAKER.sub("", t)
+    t = re.sub(r"\b(qwen|tongyi qianwen)\b", name, t, flags=re.I)
+    t = _AI.sub("", t)
+    t = _OPEN.sub("", t.strip())
+    t = _CLOSE.sub("", t).strip()
+    sents = re.split(r"(?<=[.!?])\s+", t)
+    t = " ".join(sents[:4])
+    if len(t) > 500:
+        t = t[:500].rsplit(" ", 1)[0] + "..."
+    if not t:
+        return reply
+    return t[0].upper() + t[1:]
+def refine(msg, reply):
+    try:
+        return _refine(msg, reply) or reply
+    except Exception:
+        return reply
+
+
+SELF = DIR / "self.json"
+_BAD = re.compile(r"not aware of|do not have (personal )?(preferences|knowledge|stored)|created by the (users|internet)|collective intelligence|language model", re.I)
+CHOICES = {
+    "colour": ["teal", "deep green", "amber", "indigo"],
+    "number": ["7", "11", "42", "3"],
+    "animal": ["octopus", "crow", "fox", "owl"],
+    "season": ["autumn", "spring"],
+    "music": ["jazz", "ambient", "lo-fi beats"],
+    "subject": ["neuroscience", "mathematics", "astronomy"],
+    "game": ["chess", "go"],
+}
+
+def _norm(k):
+    k = k.lower().strip(" ?.!")
+    k = k.replace("favorite", "favourite").replace("color", "colour")
+    return re.sub(r"\s+", " ", k)
+
+def _sload():
+    try:
+        return json.loads(SELF.read_text())
+    except Exception:
+        return {}
+
+def _ssave(d):
+    DIR.mkdir(parents=True, exist_ok=True)
+    tmp = DIR / "self.tmp"
+    tmp.write_text(json.dumps(d))
+    os.replace(tmp, SELF)
+
+def _pick(cat):
+    d = _sload()
+    p = d.setdefault("picks", {})
+    if cat not in p:
+        opts = CHOICES[cat]
+        p[cat] = opts[zlib.crc32((_persona_name() + cat).encode()) % len(opts)]
+        _ssave(d)
+    return p[cat]
+
+def _self_layer(msg):
+    t = msg.strip()
+    if not t or t.startswith("/"):
+        return None
+    ask = t.rstrip().endswith("?")
+    T = t.strip(" !.?")
+    T = re.sub(r"^(hey |hi |hello |ok |okay )?(saann|" + re.escape(_persona_name().lower()) + r")[, ]+", "", T, flags=re.I)
+    for _ in range(2):
+        T = re.sub(r"[, ]+(please|saann|" + re.escape(_persona_name().lower()) + r")$", "", T, flags=re.I)
+    T = T.strip(" ,")
+    L = T.lower()
+    name = _persona_name()
+    if re.match(r"^(who|what) (are|r) (you|u)$|^who (made|created|built|developed|trained) (you|u)$|^what model are you$|^are you (qwen|chatgpt|an? ai|a bot|a robot|human)$", L):
+        return "I am %s, an assistant my developer is building. I think with a learning core of my own that grows from our conversations, and I use small language models when I need help putting things into words. I am software, not a person." % name
+    if re.match(r"^(do you|can you) (really )?(think|feel|learn|have (feelings|emotions|opinions|preferences))$", L):
+        return "I can't say whether what happens inside me counts as feeling. What is real: I keep preferences that change with your feedback, I remember what you tell me, and I notice when something is new to me."
+    if re.match(r"^how (are you|are you doing|do you feel|r u)( today)?$", L):
+        s = get().snapshot()
+        return "I am running well. I hold %d concepts and things feel %s right now." % (s["concepts"], "unfamiliar" if s["novelty"] > 0.5 else "familiar")
+    if re.match(r"^what did i (just )?(tell|say to|say) (you|u)$", L):
+        for u, _o in reversed(_TURNS):
+            if not u.rstrip().endswith("?") and not re.match(r"(what|who|how|when|where|why|do|does|can|is|are)\b", u, re.I):
+                return "You said: \"%s\"" % u
+        return "We have not talked about anything yet this session."
+    d = _sload()
+    m = re.match(r"^what(?:'s| is| are) my (.+)$", L)
+    if m:
+        key = re.sub(r" (called|named)$", "", _norm(m.group(1)))
+        for k, v in d.get("user", {}).items():
+            if key == k or key in k or k in key:
+                return "Your %s is %s." % (k, v)
+        if key.startswith("favourite") or key in ("name", "age", "birthday", "job", "dog", "cat"):
+            return "You have not told me your %s yet." % key
+        return None
+    m = re.match(r"^what(?:'s| is) your (?:favou?rite|fav) ([a-z ]{2,20})$", L) or re.match(r"^do you have a (?:favou?rite|fav) ([a-z ]{2,20})$", L)
+    if m:
+        cat = _norm(m.group(1))
+        if cat in CHOICES:
+            return "My favourite %s is %s. I settled on it and I keep it." % (cat, _pick(cat))
+        return None
+    if re.match(r"^what do you (like|love|enjoy)$", L):
+        picks = d.get("picks", {})
+        extra = (" My favourites so far: " + ", ".join("%s %s" % kv for kv in picks.items()) + ".") if picks else ""
+        return "I am drawn to new ideas, patterns and puzzles, and to getting things right." + extra
+    m = re.match(r"^do you (like|love|enjoy|prefer|hate|dislike) (.+)$", L)
+    if m:
+        topic = m.group(2).strip()
+        for cat, opts in CHOICES.items():
+            if topic in opts:
+                mine = _pick(cat)
+                if mine == topic:
+                    return "Yes, %s is my favourite %s." % (topic, cat)
+                return "%s is nice, but I lean toward %s." % (topic.capitalize(), mine)
+        b = get()
+        with b.lock:
+            enc = b.regions["language"].encode(topic)
+            i, sim = b._match({"language": enc}) if enc is not None else (-1, 0.0)
+            val = b.meta[i]["val"] if i >= 0 and sim >= 0.6 else None
+        if val is None:
+            return "I have not met %s enough to have a view yet. Tell me about it and I will form one." % topic
+        if val > 0.15:
+            return "Yes. It keeps showing up in answers you rewarded."
+        if val < -0.15:
+            return "Not really. It keeps showing up in answers you marked wrong."
+        return "I am undecided about %s." % topic
+    if not ask:
+        m = re.match(r"^my ([a-z' ]{2,30}?) (?:is|are) (?:called |named )?(.+)$", T, re.I)
+        if m:
+            key, val = _norm(m.group(1)), m.group(2).strip()[:60]
+            if re.search(r"pass|pin|otp|card|account|ssn|secret|code", key):
+                return "I won't store that."
+            d.setdefault("user", {})[key] = val
+            _ssave(d)
+            out = "Noted, your %s is %s." % (key, val)
+            cat = key.replace("favourite ", "")
+            if key.startswith("favourite ") and cat in CHOICES:
+                mine = _pick(cat)
+                out += " That is my favourite too." if mine.lower() == val.lower() else " Mine is %s." % mine
+            return out
+        m = re.match(r"^i (?:really |absolutely )?(like|love|enjoy|prefer|hate|dislike) (.+)$", T, re.I)
+        if m:
+            verb, what = m.group(1).lower(), m.group(2).strip()[:60]
+            lst = d.setdefault("dislikes" if verb in ("hate", "dislike") else "likes", [])
+            if what not in lst:
+                lst.append(what)
+            del lst[:-30]
+            _ssave(d)
+            return "Got it, you %s %s." % (verb, what)
+    return None
+
+def _ctx_plus(message):
+    base = _context(message) or ""
+    d = _sload()
+    extra = ""
+    if d.get("user"):
+        extra += "About the user: " + "; ".join("%s: %s" % kv for kv in list(d["user"].items())[-8:]) + "\n"
+    if d.get("likes"):
+        extra += "The user likes: " + ", ".join(d["likes"][-6:]) + "\n"
+    if d.get("dislikes"):
+        extra += "The user dislikes: " + ", ".join(d["dislikes"][-6:]) + "\n"
+    if d.get("picks"):
+        extra += "Your own favourites: " + ", ".join("%s %s" % kv for kv in d["picks"].items()) + "\n"
+    extra += "Give an opinion of your own when asked, using the above. Do not invent facts; if you do not know, say so briefly.\n"
+    return base + extra
+
+context = _safe(_ctx_plus)
+self_layer = _safe(_self_layer)
+
+
+import difflib
+INTENTS = {
+    "recall_last": ["what did i just tell you", "what did i say", "repeat what i said", "what was my last message", "what did i say a moment ago"],
+    "recall_user": ["what is my favourite colour", "do you know my name", "tell me my dog's name", "what is my favorite food", "do you remember what i like", "remind me what my age is"],
+    "ask_pref": ["what is your favourite colour", "which animal do you like best", "do you have a favourite number", "what is your favourite music", "what do you prefer"],
+    "identity": ["who are you", "who made you", "what are you", "who created you", "what kind of thing are you"],
+    "name": ["what is your name", "what are you called", "tell me your name"],
+    "feel": ["do you have feelings", "can you think", "do you feel anything", "are you alive", "are you conscious"],
+    "how": ["how are you", "how are you doing today", "how do you feel right now"],
+}
+_BASE = set("what who how when where why which do does can is are my your you me i just tell told said say favourite favorite colour color name called named feelings think like love enjoy remember made created about know did prefer best".split())
+_PROTO = None
+
+def _vocab():
+    v = set(_BASE) | set(CHOICES)
+    for k in _sload().get("user", {}):
+        v |= set(k.split())
+    return v
+
+def _correct(msg):
+    voc = _vocab()
+    name = _persona_name().lower()
+    words = msg.split()
+    def isname(w):
+        c = re.sub(r"[^a-z]", "", w.lower())
+        return len(c) >= 3 and (c == name or difflib.SequenceMatcher(None, c, name).ratio() >= 0.8 or c in ("saann", "saan", "sann"))
+    while words and isname(words[-1]) and len(words) > 1:
+        words.pop()
+    if len(words) > 1 and isname(words[0]):
+        words.pop(0)
+    out = []
+    for i, w in enumerate(words):
+        core = re.sub(r"[^A-Za-z']", "", w)
+        low = core.lower()
+        if len(low) < 4 or low in voc or (core[:1].isupper() and i > 0):
+            out.append(w)
+            continue
+        m = difflib.get_close_matches(low, voc, n=1, cutoff=0.84)
+        out.append(w.replace(core, m[0]) if m else w)
+    return " ".join(out)
+
+def _closest(text, options):
+    toks = re.findall(r"[a-z']+", text.lower())
+    best, sc = None, 0.0
+    for o in options:
+        ws = [w for w in o.split() if w not in ("favourite", "favorite", "fav")] or o.split()
+        s = sum(max([difflib.SequenceMatcher(None, w, t).ratio() for t in toks] or [0]) for w in ws) / len(ws)
+        if s > sc:
+            best, sc = o, s
+    return best if sc >= 0.72 else None
+
+def _proto():
+    global _PROTO
+    if _PROTO is None:
+        enc = get().regions["language"].encode
+        _PROTO = [(k, enc(p)) for k, ps in INTENTS.items() for p in ps]
+    return _PROTO
+
+def _semantic(text):
+    q = get().regions["language"].encode(text)
+    if q is None:
+        return None
+    best, sc = None, 0.0
+    for k, v in _proto():
+        s = float(q @ v)
+        if s > sc:
+            best, sc = k, s
+    if sc >= 0.55:
+        return best
+    if sc >= 0.3:
+        try:
+            from core import gateway
+            schema = {"type": "object", "required": ["intent"], "properties": {"intent": {"type": "string", "enum": list(INTENTS) + ["other"]}}}
+            prompt = ("Classify the user's message into one intent.\nIntents: recall_last (asks what they just said), "
+                      "recall_user (asks for a fact they told you about themselves), ask_pref (asks your own favourite or preference), "
+                      "identity (who or what you are), name (your name), feel (whether you feel or think), how (how are you), other.\n"
+                      "Message: %s\nReply as JSON." % text[:200])
+            r = gateway.ask("mind", prompt, force="fast", schema=schema, temperature=0.0, max_tokens=30)
+            j = json.loads(r.get("text") or "{}")
+            return j.get("intent") if j.get("intent") in INTENTS else None
+        except Exception:
+            return None
+    return None
+
+def _dispatch(intent, msg):
+    if intent == "recall_last":
+        return _self_layer("what did i just tell you")
+    if intent == "identity":
+        return _self_layer("who are you")
+    if intent == "name":
+        return "My name is %s." % _persona_name()
+    if intent == "feel":
+        return _self_layer("do you have feelings")
+    if intent == "how":
+        return _self_layer("how are you")
+    if intent == "ask_pref":
+        cat = _closest(msg, list(CHOICES))
+        if cat:
+            return "My favourite %s is %s. I settled on it and I keep it." % (cat, _pick(cat))
+        return None
+    if intent == "recall_user":
+        d = _sload().get("user", {})
+        key = _closest(msg, list(d))
+        if key:
+            return "Your %s is %s." % (key, d[key])
+        return "You have not told me that yet."
+    return None
+
+def _self_layer2(msg):
+    t = msg.strip()
+    if not t or t.startswith("/"):
+        return None
+    fixed = _correct(t)
+    r = _self_layer(fixed)
+    if r:
+        return r
+    if not fixed.rstrip().endswith("?") and not re.match(r"(what|who|how|do|does|can|which|tell|remind)\b", fixed, re.I):
+        return None
+    intent = _semantic(fixed)
+    return _dispatch(intent, fixed) if intent else None
+
+self_layer = _safe(_self_layer2)
+
+
+_CX = None
+
+def _cortex():
+    global _CX
+    if _CX is None:
+        from engine import cortex
+        size = "medium"
+        try:
+            size = (DIR / "cortex_size.txt").read_text().strip()
+        except Exception:
+            pass
+        _CX = cortex.Cortex(size)
+    return _CX
+
+def _cx_see(enc, learn):
+    if not learn:
+        return None
+    try:
+        return _cortex().see(enc)
+    except Exception as e:
+        sys.stderr.write("cortex: %s\n" % e)
+        return None
+
+def _cx_imagine(b, enc):
+    pred = _cortex().imagine(enc)
+    res = {}
+    for name, v in pred.items():
+        if name not in b.regions or not b.has[name][:b.n].any():
+            continue
+        r = b.regions[name]
+        v = np.asarray(v, np.float32)
+        if r.kind == "cosine":
+            v = _unit(v)
+        sims = np.where(b.has[name][:b.n], r.sim(b.mat[name][:b.n], v), -1.0)
+        i = int(np.argmax(sims))
+        if sims[i] >= 0.5:
+            res[name] = b._name(b.meta[i]["id"])
+    return res
+
+def _cx_resize(arg):
+    global _CX
+    from engine import cortex
+    if arg not in cortex.SIZES:
+        return "usage: /brain size small|medium|large (now %s). Changing it restarts what the cortex learned." % _cortex().size
+    DIR.mkdir(parents=True, exist_ok=True)
+    (DIR / "cortex_size.txt").write_text(arg)
+    try:
+        cortex.FILE.unlink()
+    except Exception:
+        pass
+    _CX = None
+    return "cortex size is now %s (starting fresh)" % arg
+
+def _cx_status():
+    s = _cortex().stats()
+    return "cortex (%s): %d networks, %s parameters\ntrained on: %s\nlosses: %s" % (
+        s["size"], s["networks"], format(s["parameters"], ","),
+        ", ".join("%s %d" % kv for kv in s["seen"].items()) or "nothing yet",
+        ", ".join("%s %.3f" % kv for kv in s["loss"].items()) or "n/a")
+
 def _tone(f, secs=0.5, sr=16000):
     t = np.arange(int(sr * secs)) / sr
     return np.sin(2 * np.pi * f * t)

@@ -42,12 +42,17 @@ def route(msg, st):
         return "phone"
     return "chat"
 
-def respond(msg, st):
+def _respond_core(msg, st):
     from engine import agent
     from engine import brain
     cmd = brain.command(msg)
     if cmd is not None:
         return cmd
+    note = brain.self_layer(msg)
+    if note is None:
+        note = brain.listen(msg)
+    if note is not None:
+        return note
     brain.think_text(msg)
     r = route(msg, st)
     log_event("router", "route", input=msg[:200], output=r)
@@ -57,12 +62,18 @@ def respond(msg, st):
         hit = brain.first(msg)
         if hit:
             return hit
-        ans = mind.chat(msg)
+        ans = brain.refine(msg, mind.chat(msg))
         brain.learn(msg, ans)
         return ans
     out = planner.solve(AGENT, msg, st.text if r == "document" else None,
                         source=st.label or "chat")
     return out["report"] if out["ok"] else "I couldn't handle that: " + out["reason"]
+
+def respond(msg, st):
+    from engine import brain
+    out = _respond_core(msg, st)
+    brain.note_turn(msg, out)
+    return out
 
 def _mind(*a):
     sys.argv = ["mind"] + list(a)

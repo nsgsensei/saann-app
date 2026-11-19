@@ -334,6 +334,13 @@ def _known(message, n=3):
                      for qk, q, a, cf, s in rows), reverse=True)
     return [x for x in scored if x[0] >= 0.4][:n]
 
+def _brain_ctx(message):
+    try:
+        from engine import brain
+        return brain.context(message) or ""
+    except Exception:
+        return ""
+
 def chat(message, ask_fn=None):
     from core import gateway
     ask_fn = ask_fn or gateway.ask
@@ -347,7 +354,7 @@ def chat(message, ask_fn=None):
     old = gateway.SYSTEM
     gateway.SYSTEM = persona_prompt()
     try:
-        r = ask_fn("mind", ctx + "User: " + message, max_tokens=250, temperature=0.5)
+        r = ask_fn("mind", _brain_ctx(message) + ctx + "User: " + message, max_tokens=120, temperature=0.5)
     finally:
         gateway.SYSTEM = old
     return r.get("text") or "(no answer: %s)" % r.get("error")
