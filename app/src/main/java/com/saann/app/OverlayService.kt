@@ -142,6 +142,10 @@ class OverlayService : Service() {
         return b
     }
 
+    fun hideForShot(hide: Boolean) {
+        ui.post { root?.visibility = if (hide) View.INVISIBLE else View.VISIBLE }
+    }
+
     fun rebuild() { ui.post { build() } }
 
     private fun build() {
