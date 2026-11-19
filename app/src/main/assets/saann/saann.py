@@ -44,12 +44,22 @@ def route(msg, st):
 
 def respond(msg, st):
     from engine import agent
+    from engine import brain
+    cmd = brain.command(msg)
+    if cmd is not None:
+        return cmd
+    brain.think_text(msg)
     r = route(msg, st)
     log_event("router", "route", input=msg[:200], output=r)
     if r == "phone":
         return agent.run(msg)["answer"]
     if r == "chat":
-        return mind.chat(msg)
+        hit = brain.first(msg)
+        if hit:
+            return hit
+        ans = mind.chat(msg)
+        brain.learn(msg, ans)
+        return ans
     out = planner.solve(AGENT, msg, st.text if r == "document" else None,
                         source=st.label or "chat")
     return out["report"] if out["ok"] else "I couldn't handle that: " + out["reason"]

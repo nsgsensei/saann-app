@@ -314,6 +314,11 @@ def wonder(force=False, ask_fn=None):
     return {"ok": added, "question": new}
 
 def tick():
+    try:
+        from engine import brain
+        brain.tick()
+    except Exception:
+        pass
     r = {"reflect": reflect(), "explore": explore()}
     if r["explore"].get("reason") == "nothing to explore" and settings()["sources"]:
         r["wonder"] = wonder()
