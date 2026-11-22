@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     private lateinit var input: EditText
     private lateinit var send: Button
     private lateinit var orb: OrbView
+    private lateinit var brain: BrainView
     private lateinit var status: TextView
     private lateinit var py: PyObject
     private var ready = false
@@ -77,6 +78,7 @@ class MainActivity : Activity() {
         head.setPadding(dp(16), dp(10), dp(16), dp(10))
         orb = OrbView(this)
         head.addView(orb, LinearLayout.LayoutParams(dp(46), dp(46)))
+        orb.setOnClickListener { toggleBrain() }
         val col = LinearLayout(this)
         col.orientation = LinearLayout.VERTICAL
         col.setPadding(dp(12), 0, 0, 0)
@@ -99,6 +101,9 @@ class MainActivity : Activity() {
         val line = View(this)
         line.setBackgroundColor(0x4400E5FF)
         root.addView(line, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)))
+        brain = BrainView(this)
+        brain.visibility = View.GONE
+        root.addView(brain, LinearLayout.LayoutParams(MATCH_PARENT, dp(300)))
 
         // messages
         scroll = ScrollView(this)
@@ -154,7 +159,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
-        onStatus = { s -> runOnUiThread { setStatus(s) } }
+        onStatus = { s -> runOnUiThread { setStatus(s); brain.pulse(s) } }
 
         Thread {
             try {
@@ -204,6 +209,16 @@ class MainActivity : Activity() {
         onStatus = null
         ui.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    private fun toggleBrain() {
+        if (brain.visibility == View.VISIBLE) {
+            brain.visibility = View.GONE
+            brain.stop()
+        } else {
+            brain.visibility = View.VISIBLE
+            brain.start()
+        }
     }
 
     private fun startBar() {

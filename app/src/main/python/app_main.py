@@ -58,3 +58,12 @@ def _do(text):
         args[k] = int(v) if v.lstrip("-").isdigit() else v
     r = call_tool("phone-agent", parts[0], **args)
     return str(r.get("result") if r["ok"] else "ERROR: " + str(r["error"]))
+
+
+def brain_snapshot():
+    import json
+    try:
+        from engine import brain
+        return json.dumps(brain.get().snapshot())
+    except Exception:
+        return "{}"

@@ -21,6 +21,12 @@ object Host {
         }.start()
     }
 
+    fun snapshot(): String = try {
+        py?.callAttr("brain_snapshot")?.toString() ?: "{}"
+    } catch (e: Throwable) {
+        "{}"
+    }
+
     fun stop() {
         Thread {
             try { py?.callAttr("stop") } catch (e: Throwable) {}
