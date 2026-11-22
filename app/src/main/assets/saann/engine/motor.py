@@ -449,3 +449,10 @@ def get():
     if _M is None:
         _M = Motor()
     return _M
+
+# eval gate: every taught or corrected change is scored on a held-out set first
+try:
+    from engine import motor_eval as _gate
+    _gate.install()
+except Exception:
+    pass

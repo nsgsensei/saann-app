@@ -240,6 +240,9 @@ def wrap(fn):
             text = str(msg)
             if text.strip().lower().startswith("/jarvis"):
                 return command(text)
+            if text.strip().lower() == "/audit":
+                from safety.permissions import recent_audit
+                return recent_audit(10)
             if text.lstrip().startswith("/") or not cfg()["on"]:
                 return fn(msg, *a, **k)
             quick = local(text)
