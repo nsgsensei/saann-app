@@ -38,13 +38,13 @@ import java.io.File
 class MainActivity : Activity() {
     companion object {
         @Volatile var onStatus: ((String) -> Unit)? = null
-        private const val BG = 0xFF0F1114.toInt()
-        private const val PANEL = 0xFF1A1D23.toInt()
-        private const val CYAN = 0xFF00E5FF.toInt()
-        private const val INK = 0xFFF5F3EE.toInt()
-        private const val DIM = 0xFF8B93A1.toInt()
-        private const val BODY = 0xFFE4E1DA.toInt()
-        private const val BAD = 0xFFFF8A80.toInt()
+        private const val BG = 0xFF080808.toInt()
+        private const val PANEL = 0xFF151515.toInt()
+        private const val CYAN = 0xFFFF7A18.toInt()
+        private const val INK = 0xFFFAF7F2.toInt()
+        private const val DIM = 0xFFB8ADA5.toInt()
+        private const val BODY = 0xFFEDE6DF.toInt()
+        private const val BAD = 0xFFEF4444.toInt()
     }
 
     // The "what I am doing" card: steps, plus a live picture of the screen.
@@ -94,7 +94,7 @@ class MainActivity : Activity() {
     private val pending = ArrayList<Attachment>()
     private var camUri: android.net.Uri? = null
     private lateinit var chips: LinearLayout
-    private val SAANN_ORANGE = 0xFFFF8A3D.toInt()
+    private val SAANN_ORANGE = 0xFFFF7A18.toInt()
     private var agentTv: TextView? = null
     private val dotTask = object : Runnable {
         override fun run() {
@@ -114,12 +114,6 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // SAANN_SETUP_AFTER_SUPER
-        window.decorView.post {
-            if (!isFinishing && !Keys.flag(this, "onboarded")) {
-                Onboarding.show(this)
-            }
-        }
 
         window.statusBarColor = BG
         window.navigationBarColor = BG
@@ -186,7 +180,7 @@ class MainActivity : Activity() {
         root.addView(head)
 
         val line = View(this)
-        line.setBackgroundColor(0x33FFFFFF)
+        line.setBackgroundColor(0x33FF7A18)
         root.addView(line, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)))
         brain = BrainView(this)
         brain.visibility = View.GONE
@@ -234,7 +228,7 @@ class MainActivity : Activity() {
         val cg = GradientDrawable()
         cg.cornerRadius = dp(28).toFloat()
         cg.setColor(PANEL)
-        cg.setStroke(dp(1), 0x33FFFFFF)
+        cg.setStroke(dp(1), 0x55FF7A18)
         inCard.background = cg
         chips = LinearLayout(this)
         chips.orientation = LinearLayout.HORIZONTAL
@@ -244,7 +238,7 @@ class MainActivity : Activity() {
         inCard.addView(chipScroll, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         input = EditText(this)
         input.hint = "Message SAANN"
-        input.setHintTextColor(0x88A0A8B5.toInt())
+        input.setHintTextColor(0x88B8ADA5.toInt())
         input.setTextColor(INK)
         input.textSize = 16f
         input.maxLines = 5
@@ -274,7 +268,7 @@ class MainActivity : Activity() {
         inCard.layoutTransition = lt
         input.setOnFocusChangeListener { _, f ->
             val va = android.animation.ValueAnimator.ofObject(android.animation.ArgbEvaluator(),
-                if (f) 0x33FFFFFF else 0xCC00E5FF.toInt(), if (f) 0xCC00E5FF.toInt() else 0x33FFFFFF)
+                if (f) 0x33FFFFFF else 0xCCFF7A18.toInt(), if (f) 0xCCFF7A18.toInt() else 0x33FFFFFF)
             va.duration = 160
             va.addUpdateListener { cg.setStroke(dp(if (f) 2 else 1), it.animatedValue as Int) }
             va.start()
@@ -319,11 +313,19 @@ class MainActivity : Activity() {
                 py = Python.getInstance().getModule("app_main")
                 py.callAttr("init", filesDir.absolutePath, Bridge(this))
                 Host.py = py
+                // SAANN_CONNECTED_STARTUP_V1
+                Onboarding.restore(this)
+                if (!Onboarding.needed(this)) {
+                    py.callAttr("setup_api", "finish", "{}")
+                }
                 runOnUiThread {
                     ready = true
                     setBusy(false)
                     setStatus("Ready")
                     startBar()
+                    if (Onboarding.needed(this) && !isFinishing && !isDestroyed) {
+                        Onboarding.show(this)
+                    }
                 }
             } catch (e: Throwable) {
                 runOnUiThread {
@@ -558,8 +560,8 @@ class MainActivity : Activity() {
         val s = dp(4).toFloat()
         val g = GradientDrawable()
         g.cornerRadii = if (mine) floatArrayOf(r, r, r, r, s, s, r, r) else floatArrayOf(r, r, r, r, r, r, s, s)
-        g.setColor(if (mine) 0xFF2E6B5C.toInt() else PANEL)
-        g.setStroke(dp(1), if (mine) 0xFF3F8A77.toInt() else 0x33FFFFFF)
+        g.setColor(if (mine) 0xFF4A2114.toInt() else PANEL)
+        g.setStroke(dp(1), if (mine) 0xFFB84A24.toInt() else 0x33FFFFFF)
         tv.background = g
         val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
         lp.gravity = if (mine) Gravity.END else Gravity.START
@@ -707,7 +709,7 @@ class MainActivity : Activity() {
         img.setPadding(0, dp(8), 0, dp(4))
         img.visibility = View.GONE
         val cap = TextView(this)
-        cap.setTextColor(0x99A0A8B5.toInt())
+        cap.setTextColor(0x99B8ADA5.toInt())
         cap.textSize = 11f
         cap.visibility = View.GONE
         val body = LinearLayout(this)

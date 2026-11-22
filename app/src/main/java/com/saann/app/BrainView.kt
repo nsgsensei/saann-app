@@ -186,7 +186,7 @@ class BrainView(ctx: Context) : View(ctx) {
     }
 
     private fun colorOf(name: String): Int = when {
-        name == "language" -> 0xFF00E5FF.toInt()
+        name == "language" -> 0xFFFF7A18.toInt()
         name == "visual" || name == "color" -> 0xFFB47AFF.toInt()
         name in hubs -> 0xFFFFC857.toInt()
         else -> 0xFF00E5A0.toInt()
@@ -226,7 +226,7 @@ class BrainView(ctx: Context) : View(ctx) {
             c.drawLine(ax, ay2, bx, by, line)
             if (act > 0.12f) {
                 val ph = (t * 0.9f + idx * 0.37f) % 1f
-                fill.color = 0xFFE8FBFF.toInt()
+                fill.color = 0xFFFAF7F2.toInt()
                 fill.alpha = (120 + 135 * act).toInt().coerceIn(0, 255)
                 c.drawCircle(ax + (bx - ax) * ph, ay2 + (by - ay2) * ph, (1.6f + 2.4f * act) * d, fill)
             }
@@ -269,7 +269,7 @@ class BrainView(ctx: Context) : View(ctx) {
             c.drawText(n.name, dt.sx + r * 1.8f, dt.sy + r * 0.4f, text)
         }
 
-        text.color = 0xFF6FD6E6.toInt()
+        text.color = 0xFFB8ADA5.toInt()
         text.alpha = 230
         c.drawText("BRAIN   concepts $concepts   novelty ${"%.2f".format(novelty)}", 10f * d, 16f * d, text)
         c.drawText("L ${"%.2f".format(left)}   R ${"%.2f".format(right)}   drag to rotate", 10f * d, h - 8f * d, text)

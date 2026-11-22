@@ -11,7 +11,7 @@ import kotlin.math.sin
 
 class OrbView(ctx: Context) : View(ctx) {
     var speed = 0.35f
-    var accent = 0xFF00E5FF.toInt()
+    var accent = 0xFFFF7A18.toInt()
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND

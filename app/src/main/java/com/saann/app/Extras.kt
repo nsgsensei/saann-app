@@ -117,10 +117,10 @@ object Attach {
 // ---------------- brain detail screen ----------------
 object BrainDetail {
     private const val BG = 0xFF05090F.toInt()
-    private const val PANEL = 0xFF0B1620.toInt()
-    private const val CYAN = 0xFF00E5FF.toInt()
-    private const val INK = 0xFFE8FBFF.toInt()
-    private const val DIM = 0xFF6FD6E6.toInt()
+    private const val PANEL = 0xFF151515.toInt()
+    private const val CYAN = 0xFFFF7A18.toInt()
+    private const val INK = 0xFFFAF7F2.toInt()
+    private const val DIM = 0xFFB8ADA5.toInt()
 
     fun show(act: Activity) {
         val d = Dialog(act, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
@@ -170,7 +170,7 @@ object BrainDetail {
             val g = GradientDrawable()
             g.cornerRadius = dp(16).toFloat()
             g.setColor(PANEL)
-            g.setStroke(dp(1), 0x5500E5FF)
+            g.setStroke(dp(1), 0x55FF7A18)
             c.background = g
             val lp = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
             lp.topMargin = dp(8)

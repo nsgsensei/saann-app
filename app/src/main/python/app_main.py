@@ -301,3 +301,144 @@ def tasks_run_due():
                       (done, status, s._next(row[4], row[5], row[6], done), row[0]))
         ran.append({"name": row[1], "report": (out or status)[:900]})
     return json.dumps({"due": len(due), "ran": ran})
+
+
+# SAANN_CONNECTED_SETUP_V1
+_setup_credentials = {}
+_setup_installed = False
+_setup_legacy_keys = None
+
+
+def setup_api(operation, payload="{}"):
+    import json
+    from engine import cloud, media
+
+    global _setup_credentials
+    global _setup_installed
+    global _setup_legacy_keys
+
+    try:
+        data = json.loads(str(payload) or "{}")
+
+        if not _setup_installed:
+            _setup_legacy_keys = cloud.keys
+
+            def combined_keys():
+                old = dict(_setup_legacy_keys() or {})
+                old.update(_setup_credentials)
+                return old
+
+            cloud.keys = combined_keys
+            _setup_installed = True
+
+        if operation == "restore":
+            allowed = (
+                "gemini", "groq", "cloudflare",
+                "cloudflare_account"
+            )
+            _setup_credentials = {
+                name: str(data[name]).strip()
+                for name in allowed
+                if str(data.get(name, "")).strip()
+            }
+            return json.dumps({"ok": True})
+
+        if operation == "test":
+            name = str(data.get("provider", ""))
+            if name not in ("gemini", "groq", "cloudflare"):
+                return json.dumps({
+                    "ok": False, "message": "Unknown provider"
+                })
+
+            key = str(data.get("key", "")).strip()
+            if not key:
+                return json.dumps({
+                    "ok": False, "message": "Enter the API key first."
+                })
+
+            _setup_credentials[name] = key
+
+            if name == "cloudflare":
+                account = str(data.get("account", "")).strip()
+                if not account:
+                    return json.dumps({
+                        "ok": False,
+                        "message": "Enter the Cloudflare Account ID."
+                    })
+                _setup_credentials["cloudflare_account"] = account
+
+            result = cloud.test(name)
+            ok = result.startswith("working")
+            return json.dumps({"ok": ok, "message": result})
+
+        if operation == "image_test":
+            # Explicitly requested by the user in the setup screen.
+            import base64
+
+            result = media._cf_run(
+                media.CF_IMAGE,
+                {"prompt": "A small orange circle on a black background",
+                 "steps": 4}
+            )
+            encoded = result.get("image", "")
+            raw = base64.b64decode(encoded, validate=True)
+
+            if not raw:
+                return json.dumps({
+                    "ok": False,
+                    "message": "The provider returned an empty image."
+                })
+
+            media.UPLOADS.mkdir(parents=True, exist_ok=True)
+            suffix = ".png" if raw.startswith(b"\x89PNG") else ".jpg"
+            path = media.UPLOADS / ("setup-image-test" + suffix)
+            path.write_bytes(raw)
+
+            return json.dumps({
+                "ok": True,
+                "message": "Image generated and saved in Library.",
+                "path": str(path)
+            })
+
+        if operation == "finish":
+            if not cloud.connected():
+                return json.dumps({
+                    "ok": False,
+                    "message": "Connect a text provider first."
+                })
+
+            # Cloud-only is intentional: local servers remain disabled.
+            if not cloud._set_mode("cloud"):
+                return json.dumps({
+                    "ok": False,
+                    "message": "Could not save cloud mode."
+                })
+
+            return json.dumps({
+                "ok": True,
+                "message": "Cloud mode enabled."
+            })
+
+        return json.dumps({
+            "ok": False, "message": "Unknown setup operation."
+        })
+
+    except Exception as exc:
+        # Do not return exception text which could contain credentials.
+        import urllib.error
+
+        if isinstance(exc, urllib.error.HTTPError):
+            message = {
+                400: "The provider rejected the request. Check model support.",
+                401: "The key was rejected.",
+                403: "Access denied. Check permissions and account access.",
+                404: "The configured model or endpoint was not found.",
+                429: "Quota or rate limit reached. Try again later."
+            }.get(exc.code, "Provider HTTP error %s." % exc.code)
+        else:
+            message = (
+                "Connection or response failed. Check internet, "
+                "account access, and provider settings."
+            )
+
+        return json.dumps({"ok": False, "message": message})

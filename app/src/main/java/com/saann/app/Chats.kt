@@ -122,9 +122,9 @@ object Recents {
     var onSettings: (() -> Unit)? = null
     private const val PANEL = 0xFF14171C.toInt()
     private const val SEL = 0xFF232830.toInt()
-    private const val INK = 0xFFF5F3EE.toInt()
-    private const val DIM = 0xFF8B93A1.toInt()
-    private const val CYAN = 0xFF00E5FF.toInt()
+    private const val INK = 0xFFFAF7F2.toInt()
+    private const val DIM = 0xFFB8ADA5.toInt()
+    private const val CYAN = 0xFFFF7A18.toInt()
 
     fun show(a: Activity, onOpen: (String) -> Unit, onNew: () -> Unit, onGone: (String) -> Unit) {
         val den = a.resources.displayMetrics.density
@@ -287,7 +287,7 @@ object Recents {
                 row.gravity = Gravity.CENTER_VERTICAL
                 row.setPadding(0, dp(8), 0, dp(8))
                 val isImg = Previewer.kindOf(f.name) == "image"
-                row.addView(IconView(a, if (isImg) "photo" else "file", CYAN, 0x1F00E5FF), LinearLayout.LayoutParams(dp(42), dp(42)))
+                row.addView(IconView(a, if (isImg) "photo" else "file", CYAN, 0x1FFF7A18), LinearLayout.LayoutParams(dp(42), dp(42)))
                 val tx = LinearLayout(a)
                 tx.orientation = LinearLayout.VERTICAL
                 tx.setPadding(dp(12), 0, 0, 0)
@@ -314,10 +314,10 @@ object Recents {
 }
 
 object Previewer {
-    private const val BG = 0xFF0F1114.toInt()
-    private const val INK = 0xFFF5F3EE.toInt()
-    private const val DIM = 0xFF8B93A1.toInt()
-    private const val CYAN = 0xFF00E5FF.toInt()
+    private const val BG = 0xFF080808.toInt()
+    private const val INK = 0xFFFAF7F2.toInt()
+    private const val DIM = 0xFFB8ADA5.toInt()
+    private const val CYAN = 0xFFFF7A18.toInt()
     private val imgExt = setOf("jpg", "jpeg", "png", "webp", "bmp", "gif")
     private val textExt = setOf("txt", "md", "csv", "json", "py", "kt", "log", "xml", "html", "js", "yaml", "yml", "ini")
 
@@ -417,7 +417,7 @@ object Previewer {
             b.setPadding(dp(22), dp(11), dp(22), dp(11))
             val g = GradientDrawable()
             g.cornerRadius = dp(22).toFloat()
-            g.setColor(0xFF1A1D23.toInt())
+            g.setColor(0xFF151515.toInt())
             g.setStroke(dp(1), 0x33FFFFFF)
             b.background = g
             b.setOnClickListener { onClick() }

@@ -4,209 +4,428 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
-import android.view.Gravity
-import android.view.ViewGroup.LayoutParams.MATCH_PARENT
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.os.Handler
+import android.os.Looper
+import android.text.InputType
+import android.view.View
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
+import org.json.JSONObject
 
 object Onboarding {
-    private val ORANGE = 0xFFFF8A3D.toInt()
-    private val PANEL = 0xFF0B1620.toInt()
-    private val CYAN = 0xFF00E5FF.toInt()
-    private val INK = 0xFFE8FBFF.toInt()
-    private val DIM = 0xFF6FD6E6.toInt()
+    private val BG = 0xFF080808.toInt()
+    private val PANEL = 0xFF151515.toInt()
+    private val ORANGE = 0xFFFF7A18.toInt()
+    private val RED = 0xFFEF4444.toInt()
+    private val INK = 0xFFFAF7F2.toInt()
+    private val DIM = 0xFFB8ADA5.toInt()
+    private val ui = Handler(Looper.getMainLooper())
 
-    private data class Provider(
-        val first: String,
-        val second: String,
-        val third: String,
-        val fourth: String
+    private val names = listOf(
+        "gemini", "groq", "cloudflare", "cloudflare_account"
     )
 
-    private val providers = listOf(
-        Provider(
-            "gemini",
-            "Gemini — reasoning, photos and images",
-            "Required. One free key lets SAANN think, understand photos, and create images.",
-            "https://aistudio.google.com/apikey"
-        ),
-        Provider(
-            "groq",
-            "Groq — fast text backup",
-            "Optional. SAANN can use it when Gemini is busy or unavailable.",
-            "https://console.groq.com/keys"
-        ),
-        Provider(
-            "elevenlabs",
-            "ElevenLabs — SAANN’s voice",
-            "Optional. Gives SAANN a natural speaking voice.",
-            "https://elevenlabs.io/app/settings/api-keys"
-        )
-    )
-
-    fun needed(c: Context): Boolean {
-        return Keys.get(c, "gemini_key").isNullOrBlank() ||
-            Keys.get(c, "groq_key").isNullOrBlank() ||
-            Keys.get(c, "elevenlabs_key").isNullOrBlank()
+    private fun credentials(c: Context): JSONObject {
+        val result = JSONObject()
+        for (name in names) {
+            val value = Keys.get(c, "${name}_key")
+            if (!value.isNullOrBlank()) result.put(name, value)
+        }
+        return result
     }
+
+    // Call on the engine initialization thread, after Host.py is assigned.
+    fun restore(c: Context) {
+        val p = Host.py ?: error("Engine is not ready")
+        val result = JSONObject(
+            p.callAttr("setup_api", "restore", credentials(c).toString()).toString()
+        )
+        check(result.optBoolean("ok")) { "Could not restore provider settings" }
+    }
+
+    fun needed(c: Context): Boolean =
+        !Keys.flag(c, "connected_setup_v1")
 
     fun show(a: Activity) {
+        if (a.isFinishing || a.isDestroyed) return
+
+        val firstRun = needed(a)
+        val d = Dialog(a, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        d.setCancelable(!firstRun)
+        d.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        d.window?.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        )
+
         val den = a.resources.displayMetrics.density
+        fun dp(v: Int) = (v * den).toInt()
+
+        val scroll = ScrollView(a)
+        scroll.setBackgroundColor(BG)
+        scroll.isFillViewport = true
+
         val box = LinearLayout(a)
         box.orientation = LinearLayout.VERTICAL
-        box.setPadding(
-            (22 * den).toInt(), (20 * den).toInt(),
-            (22 * den).toInt(), (24 * den).toInt()
-        )
-        box.background = rounded(PANEL, 26 * den, 0x6600E5FF)
+        box.setPadding(dp(24), dp(30), dp(24), dp(30))
+        scroll.addView(box)
+        d.setContentView(scroll)
 
-        val title = TextView(a)
-        title.text = "SET UP SAANN"
-        title.setTextColor(INK)
-        title.textSize = 20f
-        title.setTypeface(title.typeface, Typeface.BOLD)
-        title.letterSpacing = 0.12f
-        box.addView(title)
+        var page = 0
+        var running = false
 
-        val sub = TextView(a)
-        sub.text = "Connect free AI services. Your keys stay on this phone."
-        sub.setTextColor(DIM)
-        sub.textSize = 14f
-        sub.setPadding(0, (8 * den).toInt(), 0, (16 * den).toInt())
-        box.addView(sub)
-
-        for (p in providers) {
-            box.addView(card(a, p.first, p.second, p.third, p.fourth))
+        fun text(value: String, size: Float = 15f, color: Int = INK): TextView {
+            val t = TextView(a)
+            t.text = value
+            t.textSize = size
+            t.setTextColor(color)
+            t.setPadding(0, dp(8), 0, dp(8))
+            box.addView(t)
+            return t
         }
 
-        val done = Button(a)
-        done.text = "SAVE AND CONTINUE"
-        done.setTextColor(Color.BLACK)
-        done.background = rounded(ORANGE, 16 * den, 0)
-        done.setPadding(0, (14 * den).toInt(), 0, (14 * den).toInt())
-        done.setOnClickListener {
-            if (Keys.get(a, "gemini_key").isNullOrBlank()) {
-                Toast.makeText(a, "Add at least the Gemini key", Toast.LENGTH_LONG).show()
+        fun button(label: String, primary: Boolean = false, click: () -> Unit): Button {
+            val b = Button(a)
+            b.text = label
+            b.isAllCaps = false
+            b.setTextColor(if (primary) BG else INK)
+            b.background = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setColor(if (primary) ORANGE else PANEL)
+                setStroke(dp(1), if (primary) ORANGE else 0x55FF7A18)
+            }
+            val lp = LinearLayout.LayoutParams(-1, dp(54))
+            lp.topMargin = dp(12)
+            box.addView(b, lp)
+            b.setOnClickListener {
+                if (!running) click()
+            }
+            return b
+        }
+
+        fun field(label: String, storage: String, secret: Boolean = true): EditText {
+            text(label, 13f, DIM)
+            val e = EditText(a)
+            e.setSingleLine(true)
+            e.setTextColor(INK)
+            e.setHintTextColor(DIM)
+            e.hint = label
+            e.inputType = if (secret) {
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             } else {
-                Keys.setFlag(a, "onboarded", true)
-                Toast.makeText(a, "SAANN is ready", Toast.LENGTH_SHORT).show()
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            }
+            e.setPadding(dp(14), dp(12), dp(14), dp(12))
+            e.background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(PANEL)
+                setStroke(dp(1), 0x55FF7A18)
+            }
+            e.setText(Keys.get(a, storage) ?: "")
+            box.addView(e, LinearLayout.LayoutParams(-1, -2))
+            return e
+        }
+
+        fun request(
+            operation: String,
+            payload: JSONObject,
+            status: TextView,
+            complete: (JSONObject) -> Unit
+        ) {
+            running = true
+            status.setTextColor(ORANGE)
+            status.text = "Connecting… Please wait."
+            Thread {
+                val result = try {
+                    val p = Host.py
+                    if (p == null) {
+                        JSONObject()
+                            .put("ok", false)
+                            .put("message", "The engine is starting. Tap again in a moment.")
+                    } else {
+                        JSONObject(
+                            p.callAttr("setup_api", operation, payload.toString()).toString()
+                        )
+                    }
+                } catch (e: Exception) {
+                    JSONObject()
+                        .put("ok", false)
+                        .put("message", "Setup request failed. Check connection and retry.")
+                }
+                ui.post {
+                    running = false
+                    if (!a.isFinishing && !a.isDestroyed && d.isShowing) {
+                        val ok = result.optBoolean("ok")
+                        status.setTextColor(if (ok) ORANGE else RED)
+                        status.text = result.optString("message", "Request finished.")
+                        complete(result)
+                    }
+                }
+            }.start()
+        }
+
+        lateinit var render: () -> Unit
+
+        render = {
+            box.removeAllViews()
+
+            text("SAANN", 30f).setTypeface(null, Typeface.BOLD)
+            text("SETUP ${page + 1} / 5", 12f, ORANGE)
+
+            when (page) {
+                0, 1, 2 -> {
+                    val provider = when (page) {
+                        0 -> "gemini"
+                        1 -> "groq"
+                        else -> "cloudflare"
+                    }
+                    val title = when (page) {
+                        0 -> "Connect reasoning and vision"
+                        1 -> "Add a fast text backup"
+                        else -> "Connect image generation"
+                    }
+                    val description = when (page) {
+                        0 -> "Gemini handles text and attached photos. This connection test checks text access; photo understanding is tested when you attach an image."
+                        1 -> "Groq is optional. Its test sends a short text request using your engine's configured model."
+                        else -> "Cloudflare needs an Account ID and a Workers AI API token. Test connection first, then generate a test image."
+                    }
+                    text(title, 23f)
+                    text(description, 15f, DIM)
+                    text(
+                        "Provider accounts, access, and quotas are controlled by the provider. Setup does not enable billing.",
+                        12f, DIM
+                    )
+
+                    val account = if (provider == "cloudflare") {
+                        field("Cloudflare Account ID", "cloudflare_account_key", false)
+                    } else null
+                    val key = field(
+                        if (provider == "cloudflare") "Workers AI API token" else "API key",
+                        "${provider}_key"
+                    )
+
+                    fun saveDraft() {
+                        Keys.set(a, "${provider}_key", key.text.toString().trim())
+                        if (account != null) {
+                            Keys.set(a, "cloudflare_account_key", account.text.toString().trim())
+                        }
+                    }
+
+                    val status = text("Not tested in this session.", 14f, DIM)
+                    var passed = false
+                    var checkedKey = ""
+                    var checkedAccount = ""
+
+                    button("Open provider key page") {
+                        saveDraft()
+                        val url = when (provider) {
+                            "gemini" -> "https://aistudio.google.com/apikey"
+                            "groq" -> "https://console.groq.com/keys"
+                            else -> "https://dash.cloudflare.com/"
+                        }
+                        try {
+                            a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        } catch (e: Exception) {
+                            status.setTextColor(RED)
+                            status.text = "Could not open browser. Visit: $url"
+                        }
+                    }
+
+                    button("Test connection", true) {
+                        saveDraft()
+                        passed = false
+                        val testedKey = key.text.toString().trim()
+                        val testedAccount = account?.text?.toString()?.trim() ?: ""
+                        request(
+                            "test",
+                            JSONObject()
+                                .put("provider", provider)
+                                .put("key", testedKey)
+                                .put("account", testedAccount),
+                            status
+                        ) { result ->
+                            passed = result.optBoolean("ok")
+                            checkedKey = testedKey
+                            checkedAccount = testedAccount
+                        }
+                    }
+
+                    if (provider == "cloudflare") {
+                        button("Generate test image — uses quota") {
+                            val unchanged =
+                                checkedKey == key.text.toString().trim() &&
+                                checkedAccount == (account?.text?.toString()?.trim() ?: "")
+                            if (!passed || !unchanged) {
+                                status.text = "Test the current credentials first."
+                                status.setTextColor(RED)
+                            } else {
+                                request("image_test", JSONObject(), status) { }
+                            }
+                        }
+                    }
+
+                    button("Continue") {
+                        val unchanged =
+                            checkedKey == key.text.toString().trim() &&
+                            checkedAccount == (account?.text?.toString()?.trim() ?: "")
+                        if (!passed || !unchanged) {
+                            status.text = "Test the current credentials before continuing, or skip this service."
+                            status.setTextColor(RED)
+                        } else {
+                            saveDraft()
+                            page++
+                            render()
+                        }
+                    }
+
+                    button("Skip this service") {
+                        // Clear this wizard's credential for a skipped service.
+                        Keys.set(a, "${provider}_key", "")
+                        if (provider == "cloudflare") {
+                            Keys.set(a, "cloudflare_account_key", "")
+                        }
+                        page++
+                        render()
+                    }
+                }
+
+                3 -> {
+                    text("Set up your voice", 23f)
+                    text(
+                        "This build uses your phone's speech services. No voice API key is required. Test the speaker, then confirm whether you heard it.",
+                        15f, DIM
+                    )
+                    val status = text("Voice has not been confirmed.", 14f, DIM)
+
+                    button("Play SAANN voice", true) {
+                        status.text = Voice.command(a, "test")
+                    }
+
+                    button("I heard it — enable spoken replies") {
+                        Voice.enableSpeech(a, true)
+                        Keys.setFlag(a, "setup_voice_confirmed", true)
+                        page++
+                        render()
+                    }
+
+                    button("Continue without spoken replies") {
+                        Voice.enableSpeech(a, false)
+                        Keys.setFlag(a, "setup_voice_confirmed", false)
+                        page++
+                        render()
+                    }
+
+                    button("Open phone text-to-speech settings") {
+                        try {
+                            a.startActivity(Intent("com.android.settings.TTS_SETTINGS"))
+                        } catch (e: Exception) {
+                            status.text = "Open your phone Settings and search for text-to-speech."
+                        }
+                    }
+                }
+
+                4 -> {
+                    text("Connect SAANN", 23f)
+                    text(
+                        "This checks your selected text services again, restores credentials into the live engine, and enables cloud mode. Local model servers stay off.",
+                        15f, DIM
+                    )
+
+                    for (name in listOf("gemini", "groq", "cloudflare")) {
+                        val saved = !Keys.get(a, "${name}_key").isNullOrBlank()
+                        text(
+                            "$name: " + if (saved) "credentials entered" else "skipped",
+                            14f, DIM
+                        )
+                    }
+
+                    val status = text("Ready to verify.", 14f, DIM)
+
+                    button("Connect and open chat", true) {
+                        running = true
+                        status.setTextColor(ORANGE)
+                        status.text = "Restoring credentials and checking providers…"
+
+                        Thread {
+                            var ok = false
+                            var message = ""
+                            try {
+                                restore(a)
+                                val p = Host.py ?: error("Engine not ready")
+                                val report = ArrayList<String>()
+                                var workingText = false
+
+                                for (name in listOf("gemini", "groq")) {
+                                    val value = Keys.get(a, "${name}_key") ?: ""
+                                    if (value.isBlank()) continue
+
+                                    val result = JSONObject(
+                                        p.callAttr(
+                                            "setup_api", "test",
+                                            JSONObject()
+                                                .put("provider", name)
+                                                .put("key", value)
+                                                .toString()
+                                        ).toString()
+                                    )
+                                    if (result.optBoolean("ok")) workingText = true
+                                    report.add("$name: ${result.optString("message")}")
+                                }
+
+                                if (workingText) {
+                                    val finish = JSONObject(
+                                        p.callAttr("setup_api", "finish", "{}").toString()
+                                    )
+                                    ok = finish.optBoolean("ok")
+                                    report.add(finish.optString("message"))
+                                } else {
+                                    report.add("At least one working Gemini or Groq text connection is required.")
+                                }
+                                message = report.joinToString("\n\n")
+                            } catch (e: Exception) {
+                                message = "Could not complete setup. Wait for the engine, then retry."
+                            }
+
+                            val success = ok
+                            val finalMessage = message
+                            ui.post {
+                                running = false
+                                if (!a.isFinishing && !a.isDestroyed && d.isShowing) {
+                                    status.text = finalMessage
+                                    status.setTextColor(if (success) ORANGE else RED)
+                                    if (success) {
+                                        Keys.setFlag(a, "connected_setup_v1", true)
+                                        d.dismiss()
+                                    }
+                                }
+                            }
+                        }.start()
+                    }
+                }
+            }
+
+            if (page > 0) {
+                button("Back") {
+                    page--
+                    render()
+                }
+            }
+
+            if (!firstRun) {
+                button("Close setup") { d.dismiss() }
             }
         }
 
-        val doneLp = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
-        doneLp.topMargin = (18 * den).toInt()
-        box.addView(done, doneLp)
-
-        val dialog = Dialog(a)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        dialog.setContentView(box)
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        dialog.window?.setLayout(MATCH_PARENT, WRAP_CONTENT)
-        dialog.show()
-    }
-
-    private fun card(
-        a: Activity,
-        id: String,
-        name: String,
-        desc: String,
-        url: String
-    ): LinearLayout {
-        val den = a.resources.displayMetrics.density
-        val card = LinearLayout(a)
-        card.orientation = LinearLayout.VERTICAL
-        card.setPadding(
-            (16 * den).toInt(), (14 * den).toInt(),
-            (16 * den).toInt(), (14 * den).toInt()
-        )
-        card.background = rounded(0xFF101C28.toInt(), 18 * den, 0x33FF8A3D)
-
-        val t = TextView(a)
-        t.text = name
-        t.setTextColor(INK)
-        t.textSize = 16f
-        t.setTypeface(t.typeface, Typeface.BOLD)
-        card.addView(t)
-
-        val d = TextView(a)
-        d.text = desc
-        d.setTextColor(DIM)
-        d.textSize = 13f
-        d.setPadding(0, (4 * den).toInt(), 0, (10 * den).toInt())
-        card.addView(d)
-
-        val field = EditText(a)
-        field.hint = "Paste $id API key"
-        field.setHintTextColor(0x776FD6E6)
-        field.setTextColor(INK)
-        field.textSize = 14f
-        field.background = rounded(0xFF071019.toInt(), 12 * den, 0x3300E5FF)
-        field.setPadding(
-            (12 * den).toInt(), (10 * den).toInt(),
-            (12 * den).toInt(), (10 * den).toInt()
-        )
-        field.setText(Keys.get(a, "${id}_key") ?: "")
-        card.addView(field, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-
-        val actions = LinearLayout(a)
-        actions.orientation = LinearLayout.HORIZONTAL
-        actions.gravity = Gravity.END
-
-        actions.addView(link(a, "GET KEY") {
-            try {
-                a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-            } catch (e: Exception) {
-                Toast.makeText(a, "Open: $url", Toast.LENGTH_LONG).show()
-            }
-        })
-
-        actions.addView(link(a, "SAVE") {
-            val value = field.text.toString().trim()
-            if (value.isEmpty()) {
-                Toast.makeText(a, "Paste the key first", Toast.LENGTH_SHORT).show()
-            } else {
-                Keys.set(a, "${id}_key", value)
-                Toast.makeText(a, "$id key saved", Toast.LENGTH_SHORT).show()
-            }
-        })
-
-        card.addView(actions, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-
-        val lp = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
-        lp.topMargin = (12 * den).toInt()
-        card.layoutParams = lp
-        return card
-    }
-
-    private fun link(a: Activity, label: String, onClick: () -> Unit): TextView {
-        val den = a.resources.displayMetrics.density
-        val b = TextView(a)
-        b.text = label
-        b.setTextColor(ORANGE)
-        b.textSize = 13f
-        b.setTypeface(b.typeface, Typeface.BOLD)
-        b.letterSpacing = 0.08f
-        b.setPadding(
-            (14 * den).toInt(), (10 * den).toInt(),
-            (14 * den).toInt(), (10 * den).toInt()
-        )
-        b.setOnClickListener { onClick() }
-        return b
-    }
-
-    private fun rounded(color: Int, radiusDp: Float, stroke: Int): GradientDrawable {
-        val g = GradientDrawable()
-        g.setColor(color)
-        g.cornerRadius = radiusDp
-        if (stroke != 0) g.setStroke(2, stroke)
-        return g
+        render()
+        d.show()
+        d.window?.setLayout(-1, -1)
+        d.window?.statusBarColor = BG
+        d.window?.navigationBarColor = BG
     }
 }

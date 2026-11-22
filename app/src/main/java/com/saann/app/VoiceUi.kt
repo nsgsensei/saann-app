@@ -34,7 +34,7 @@ import kotlin.math.sin
 class VoiceOrb(ctx: Context) : View(ctx) {
     @Volatile var mode = 0
     @Volatile var level = 0f
-    var color = 0xFF00E5FF.toInt()
+    var color = 0xFFFF7A18.toInt()
     private var shown = 0f
     private var t = 0f
     private val den = resources.displayMetrics.density
@@ -97,11 +97,11 @@ class VoiceOrb(ctx: Context) : View(ctx) {
 
 // The full-screen voice window: listen, think, speak, listen again.
 object VoiceWindow {
-    private const val CYAN = 0xFF00E5FF.toInt()
-    private const val GREEN = 0xFF00E5A0.toInt()
-    private const val AMBER = 0xFFFFB020.toInt()
-    private const val INK = 0xFFE8FBFF.toInt()
-    private const val DIM = 0xFF6FD6E6.toInt()
+    private const val CYAN = 0xFFFF7A18.toInt()
+    private const val GREEN = 0xFFFF442B.toInt()
+    private const val AMBER = 0xFFFF7A18.toInt()
+    private const val INK = 0xFFFAF7F2.toInt()
+    private const val DIM = 0xFFB8ADA5.toInt()
     private val ui = Handler(Looper.getMainLooper())
     private var dlg: Dialog? = null
     private var rec: SpeechRecognizer? = null
@@ -138,7 +138,7 @@ object VoiceWindow {
         val d = Dialog(a, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val root = LinearLayout(a)
         root.orientation = LinearLayout.VERTICAL
-        root.setBackgroundColor(0xFF03060A.toInt())
+        root.setBackgroundColor(0xFF080808.toInt())
         root.fitsSystemWindows = true
         val top = TextView(a)
         top.text = "SAANN · VOICE"
@@ -175,8 +175,8 @@ object VoiceWindow {
         end.gravity = Gravity.CENTER
         val eg = GradientDrawable()
         eg.cornerRadius = dp(26).toFloat()
-        eg.setColor(0xFF0B1620.toInt())
-        eg.setStroke(dp(1), 0x6600E5FF)
+        eg.setColor(0xFF151515.toInt())
+        eg.setStroke(dp(1), 0x66FF7A18)
         end.background = eg
         end.setOnClickListener { d.dismiss() }
         val elp = LinearLayout.LayoutParams(dp(180), dp(52))

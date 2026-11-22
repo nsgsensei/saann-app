@@ -14,9 +14,9 @@ import android.widget.Toast
 import org.json.JSONArray
 
 object Tasks {
-    private const val INK = 0xFFF5F3EE.toInt()
-    private const val DIM = 0xFF8B93A1.toInt()
-    private const val CYAN = 0xFF00E5FF.toInt()
+    private const val INK = 0xFFFAF7F2.toInt()
+    private const val DIM = 0xFFB8ADA5.toInt()
+    private const val CYAN = 0xFFFF7A18.toInt()
 
     fun show(a: Activity) {
         val den = a.resources.displayMetrics.density
