@@ -19,7 +19,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import java.io.File
 
-class IconView(ctx: Context, val kind: String, var tint: Int = 0xFF00E5FF.toInt(), val disc: Int = 0) : View(ctx) {
+class IconView(ctx: Context, var kind: String, var tint: Int = 0xFF00E5FF.toInt(), val disc: Int = 0) : View(ctx) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private val f = Paint(Paint.ANTI_ALIAS_FLAG)
     override fun onDraw(c: Canvas) {
@@ -81,6 +81,21 @@ class IconView(ctx: Context, val kind: String, var tint: Int = 0xFF00E5FF.toInt(
                 val t = Path(); t.moveTo(-8 * k, -3 * k); t.lineTo(-4 * k, -3 * k); t.lineTo(1 * k, -7 * k); t.lineTo(1 * k, 7 * k); t.lineTo(-4 * k, 3 * k); t.lineTo(-8 * k, 3 * k); t.close(); c.drawPath(t, p)
                 c.drawArc(RectF(-3 * k, -5 * k, 5 * k, 5 * k), -50f, 100f, false, p)
                 c.drawArc(RectF(-4 * k, -9 * k, 9 * k, 9 * k), -50f, 100f, false, p)
+            }
+            "wave" -> {
+                val hs = floatArrayOf(0.35f, 0.75f, 1f, 0.6f, 0.3f)
+                for (n in hs.indices) {
+                    val xx = (n - 2) * 4.2f * k
+                    c.drawLine(xx, -8 * k * hs[n], xx, 8 * k * hs[n], p)
+                }
+            }
+            "gear" -> {
+                c.drawCircle(0f, 0f, 4 * k, p)
+                for (n in 0 until 8) {
+                    val an = n * Math.PI / 4
+                    val cx = Math.cos(an).toFloat(); val sy = Math.sin(an).toFloat()
+                    c.drawLine(cx * 6.5f * k, sy * 6.5f * k, cx * 9 * k, sy * 9 * k, p)
+                }
             }
             "shot" -> {
                 c.drawRoundRect(RectF(-5 * k, -9 * k, 5 * k, 9 * k), 2.5f * k, 2.5f * k, p)
@@ -193,9 +208,23 @@ object Ui2 {
             c.addView(l)
             if (on) c.setOnClickListener { onChatTap?.invoke() }
             else if (k == "library") c.setOnClickListener { Recents.library(a) }
+            else if (k == "tasks") c.setOnClickListener { Tasks.show(a) }
             else c.setOnClickListener { panel(a, n, k) }
+            pressFx(c)
             bar.addView(c, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         }
         return bar
+    }
+}
+
+fun pressFx(v: View) {
+    v.setOnTouchListener { view, e ->
+        when (e.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> view.animate().scaleX(0.92f).scaleY(0.92f).setDuration(90).start()
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
+                view.animate().scaleX(1f).scaleY(1f).setDuration(160)
+                    .setInterpolator(android.view.animation.OvershootInterpolator(2.2f)).start()
+        }
+        false
     }
 }

@@ -246,10 +246,28 @@ class MainActivity : Activity() {
         val mic = IconView(this, "mic", CYAN)
         mic.setOnClickListener { startVoice() }
         row.addView(mic, LinearLayout.LayoutParams(dp(40), dp(40)))
-        val up = IconView(this, "up", BG, CYAN)
+        val up = IconView(this, "wave", BG, CYAN)
+        pressFx(plus)
+        pressFx(mic)
+        pressFx(up)
         send = up
         send.isEnabled = false
         send.alpha = 0.4f
+        val lt = android.animation.LayoutTransition()
+        lt.enableTransitionType(android.animation.LayoutTransition.CHANGING)
+        inCard.layoutTransition = lt
+        input.setOnFocusChangeListener { _, f ->
+            val va = android.animation.ValueAnimator.ofObject(android.animation.ArgbEvaluator(),
+                if (f) 0x33FFFFFF else 0xCC00E5FF.toInt(), if (f) 0xCC00E5FF.toInt() else 0x33FFFFFF)
+            va.duration = 160
+            va.addUpdateListener { cg.setStroke(dp(if (f) 2 else 1), it.animatedValue as Int) }
+            va.start()
+        }
+        input.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) { updateAction() }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
         val slp = LinearLayout.LayoutParams(dp(38), dp(38))
         slp.leftMargin = dp(4)
         row.addView(send, slp)
@@ -263,14 +281,12 @@ class MainActivity : Activity() {
 
         loadHistory()
         if (Build.VERSION.SDK_INT >= 33) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS, ServerGuard.RUN), 1)
-        } else if (Build.VERSION.SDK_INT >= 23 &&
-            checkSelfPermission(ServerGuard.RUN) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(ServerGuard.RUN), 9)
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
         ServerGuard.init(this)
         Voice.restore(this)
         Ui2.onChatTap = { openRecents() }
+        Recents.onSettings = { Settings.show(this, { cycleAgent() }, { agentLabel() }) }
         ServerGuard.onStatus = { s -> runOnUiThread { setStatus(s) } }
         ServerGuard.kick()
         onStatus = { s -> runOnUiThread { setStatus(s); brain.pulse(s) } }
@@ -303,7 +319,12 @@ class MainActivity : Activity() {
 
         send.setOnClickListener {
             val t0 = input.text.toString().trim()
-            if ((t0.isEmpty() && pending.isEmpty()) || !ready || busy) return@setOnClickListener
+            if (t0.isEmpty() && pending.isEmpty()) {
+                if (ready && !busy) startVoice()
+                return@setOnClickListener
+            }
+            if (!ready || busy) return@setOnClickListener
+            send.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
             if (pending.any { !it.ready }) {
                 Toast.makeText(this, "Still reading the attachment...", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
@@ -418,6 +439,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         AgentService.appVisible = true
+        AgentService.runDue(this)
         AgentService.onReply = { q, r ->
             runOnUiThread {
                 if (q.isNotEmpty()) addMsg(q, true)
@@ -461,6 +483,19 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun updateAction() {
+        val v = send as? IconView ?: return
+        val want = if (input.text.isNotEmpty() || pending.isNotEmpty()) "up" else "wave"
+        if (v.kind != want) {
+            v.kind = want
+            v.invalidate()
+            v.animate().scaleX(1.18f).scaleY(1.18f).setDuration(90).withEndAction {
+                v.animate().scaleX(1f).scaleY(1f).setDuration(140)
+                    .setInterpolator(android.view.animation.OvershootInterpolator(2f)).start()
+            }.start()
+        }
+    }
+
     private fun setBusy(b: Boolean) {
         busy = b
         orb.speed = if (b) 1.7f else 0.35f
@@ -485,7 +520,12 @@ class MainActivity : Activity() {
     // Puts a view in the chat. Stays at the bottom only if you were already there.
     private fun place(v: View, force: Boolean) {
         val stick = force || nearBottom()
+        val a0 = v.alpha
+        v.alpha = 0f
+        v.translationY = dp(12).toFloat()
         chat.addView(v)
+        v.animate().alpha(a0).translationY(0f).setDuration(220)
+            .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
         if (stick) scrollDown() else jump.visibility = View.VISIBLE
     }
 
@@ -854,6 +894,7 @@ class MainActivity : Activity() {
     private fun addAttachment(a: Attachment) {
         pending.add(a)
         refreshChips()
+        updateAction()
         Thread {
             Attach.process(a)
             runOnUiThread { refreshChips() }

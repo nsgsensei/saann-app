@@ -20,6 +20,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import java.util.concurrent.CopyOnWriteArrayList
+import org.json.JSONObject
 
 class AgentService : Service() {
     companion object {
@@ -34,6 +35,27 @@ class AgentService : Service() {
         fun pauseListening() {
             val i = inst ?: return
             i.ui.post { i.cancelRec() }
+        }
+
+        @Volatile private var dueBusy = false
+
+        fun runDue(c: Context) {
+            if (dueBusy) return
+            dueBusy = true
+            Thread {
+                try {
+                    val p = Host.py ?: return@Thread
+                    val j = JSONObject(p.callAttr("tasks_run_due").toString())
+                    val ran = j.getJSONArray("ran")
+                    for (i in 0 until ran.length()) {
+                        val o = ran.getJSONObject(i)
+                        notifyReply(c, o.getString("name"), o.getString("report"))
+                    }
+                } catch (e: Throwable) {
+                } finally {
+                    dueBusy = false
+                }
+            }.start()
         }
 
         fun drain(): List<Pair<String, String>> {
@@ -88,6 +110,12 @@ class AgentService : Service() {
 
     private val ui = Handler(Looper.getMainLooper())
     private val tick = Runnable { cycle() }
+    private val dueTick = object : Runnable {
+        override fun run() {
+            runDue(this@AgentService)
+            ui.postDelayed(this, 60000)
+        }
+    }
     private var keep = false
     private var listenOn = false
     private var active = 0
@@ -103,6 +131,7 @@ class AgentService : Service() {
         super.onCreate()
         running = true
         inst = this
+        ui.postDelayed(dueTick, 20000)
     }
 
     fun cancelRec() {
@@ -251,6 +280,7 @@ class AgentService : Service() {
     override fun onDestroy() {
         running = false
         inst = null
+        ui.removeCallbacks(dueTick)
         listening = false
         stopRec()
         Voice.stopSpeak()

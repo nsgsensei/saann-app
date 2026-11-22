@@ -9,6 +9,7 @@ import java.net.URL
 
 object ServerGuard {
     const val RUN = "com.termux.permission.RUN_COMMAND"
+    const val LOCAL = false
     private const val HOME = "/data/data/com.termux/files/home/saann"
     @Volatile private var ctx: Context? = null
     @Volatile private var lastLaunch = 0L
@@ -17,7 +18,7 @@ object ServerGuard {
 
     fun init(c: Context) {
         ctx = c.applicationContext
-        if (watcher != null) return
+        if (!LOCAL || watcher != null) return
         val t = Thread {
             while (true) {
                 try { Thread.sleep(20000) } catch (e: Exception) { return@Thread }
@@ -72,6 +73,7 @@ object ServerGuard {
     }
 
     fun ensure(secs: Int, say: ((String) -> Unit)?): Boolean {
+        if (!LOCAL) return false
         if (mainUp()) {
             if (!up(8081)) launch()
             return true
@@ -96,7 +98,7 @@ object ServerGuard {
     }
 
     fun kick() {
-        if (!hasPerm()) return
+        if (!LOCAL || !hasPerm()) return
         Thread {
             val ok = ensure(120) { s -> onStatus?.invoke(s) }
             onStatus?.invoke(if (ok) "Ready" else "Models offline")

@@ -42,7 +42,7 @@ def init(files_dir, bridge):
 
 FAST_OK = ("phone_battery", "phone_torch", "phone_volume_set", "phone_brightness", "phone_wifi", "phone_open_url")
 
-def _fast(msg):
+def _fast_old(msg):
     """Answers simple things instantly, without any model: greetings, time, date, flashlight, battery ..."""
     import random, re, time
     t = msg.strip()
@@ -128,3 +128,176 @@ def respond(msg, _orig=respond):
     except Exception:
         f = _orig
     return f(msg)
+
+
+def _bridge(name, a="", b=""):
+    import android_bridge
+    return android_bridge._call(name, a, b)
+
+def _nice(secs):
+    h, r = divmod(int(secs), 3600)
+    m, s = divmod(r, 60)
+    out = []
+    if h: out.append("%d hour%s" % (h, "" if h == 1 else "s"))
+    if m: out.append("%d minute%s" % (m, "" if m == 1 else "s"))
+    if s: out.append("%d second%s" % (s, "" if s == 1 else "s"))
+    return " ".join(out) or "0 seconds"
+
+def _plan(t):
+    """Matches one simple phone command and returns a function that does it, or None."""
+    import re
+    from engine import motor as mo
+    s = re.sub(r"^(please|hey saann|saann|can you|could you|would you|i want you to|i need you to)[ ,]+", "", t.strip(" ?!.,"), flags=re.I)
+    s = re.sub(r"[ ,]+(please|now|for me)$", "", s, flags=re.I).strip()
+    I = re.I
+    m = re.fullmatch(r"(?:set |start |make )?(?:a |an )?(?:timer|countdown)(?: for| of)? (.+)|(?:set |start )?(?:a |an )?(.+?) (?:timer|countdown)|remind me in (.+)", s, I)
+    if m:
+        secs = mo.parse_duration(next(x for x in m.groups() if x))
+        if secs:
+            return lambda: (_bridge("timer", secs, "SAANN"), "Timer set for %s." % _nice(secs))[1]
+    m = re.fullmatch(r"(?:set )?(?:an? )?alarm (?:for|at) (.+)|wake me(?: up)? at (.+)", s, I)
+    if m:
+        hm = mo.parse_time(next(x for x in m.groups() if x))
+        if hm:
+            h, mi = hm
+            return lambda: (_bridge("alarm", "%d:%d" % (h, mi), "SAANN"),
+                            "Alarm set for %d:%02d %s." % ((h % 12) or 12, mi, "AM" if h < 12 else "PM"))[1]
+    m = re.fullmatch(r"(?:turn |make )?(?:the )?(?:volume|sound) (up|down)|(louder)|(quieter)|(mute)(?: the phone)?", s, I)
+    if m:
+        d = "up" if (m.group(1) or "").lower() == "up" or m.group(2) else "down" if m.group(1) or m.group(3) else "mute"
+        return lambda: (_bridge("vol_dir", d), "Volume " + d + ".")[1]
+    m = re.fullmatch(r"(pause|resume|next|skip|previous|stop|play)(?: the)?(?: music| song| track| playback)?|play(?: some)? music|(?:go to the |play the )?(next|previous) (?:song|track)", s, I)
+    if m:
+        w = (m.group(1) or m.group(2) or "play").lower()
+        a = {"skip": "next", "resume": "play"}.get(w, w)
+        return lambda: (_bridge("media", a), {"pause": "Paused.", "stop": "Stopped.", "next": "Next track.", "previous": "Previous track."}.get(a, "Playing."))[1]
+    m = re.fullmatch(r"(?:text|message|sms)\s+(.+?)\s+(?:saying|that says|saying that|that)\s+(.+)|send (?:a )?(?:text|message|sms) to (.+?)\s+(?:saying|that)\s+(.+)", s, I)
+    if m:
+        g = m.groups()
+        who, body = (g[0], g[1]) if g[0] else (g[2], g[3])
+        return lambda: "Opening a message to %s (%s). Tap send." % (who, _bridge("sms", who.strip(), body.strip()))
+    m = re.fullmatch(r"(?:call|phone|ring|dial) (?!me\b|back\b)(.+)", s, I)
+    if m:
+        who = m.group(1).strip()
+        return lambda: "Opening the dialer for %s (%s). Tap call." % (who, _bridge("dial", who))
+    m = re.fullmatch(r"(?:search(?: the web)?(?: for)?|google|look up) (.+)", s, I)
+    if m:
+        q = m.group(1).strip()
+        return lambda: (_bridge("search", q), "Searching for %s." % q)[1]
+    m = re.fullmatch(r"(?:open|launch|start|run|go to) (?:the )?(?!https?://)(.+?)(?: app)?", s, I)
+    if m and not re.search(r"flash ?light|torch|wifi|bluetooth", m.group(1), I):
+        name = m.group(1).strip()
+        return lambda: "Opening %s." % _bridge("open_app", name)
+    return None
+
+def _one(part):
+    p = _plan(part)
+    if p:
+        return p
+    try:
+        from engine import agent
+        q = agent.quick(part)
+    except Exception:
+        q = None
+    if q and q[0] in FAST_OK:
+        def run(q=q):
+            from core.tools import call_tool
+            r = call_tool("phone-agent", q[0], **q[1])
+            if not r["ok"]:
+                return "That failed: " + str(r["error"])
+            return ("Flashlight " + q[1]["state"] + ".") if q[0] == "phone_torch" else str(r["result"])
+        return run
+    return None
+
+def _fast(msg):
+    import re
+    out = _fast_old(msg)
+    if out is not None:
+        return out
+    t = msg.strip()
+    plans = []
+    whole = _one(t)
+    if whole:
+        plans = [whole]
+    else:
+        parts = [x for x in re.split(r"\s*(?:,|;|\band then\b|\bthen\b|\band\b)\s+", t.strip(" ?!.,")) if x.strip()]
+        if len(parts) > 1:
+            plans = [_one(x) for x in parts]
+            if not all(plans):
+                return None
+    if not plans:
+        return None
+    res = []
+    for p in plans:
+        try:
+            res.append(p())
+        except Exception as e:
+            res.append("That failed: " + str(e))
+    return " ".join(res)
+
+def tasks_json():
+    import json, time
+    from engine import scheduler as s
+    with s._db() as c:
+        rows = c.execute("SELECT id,name,request,kind,at,every_min,enabled,next_run,last_status FROM tasks ORDER BY id").fetchall()
+    out = []
+    for r in rows:
+        when = ("daily at " + str(r[4])) if r[3] == "daily" else "every %d min" % r[5]
+        out.append({"id": r[0], "name": r[1], "request": r[2], "when": when, "enabled": bool(r[6]),
+                    "next": time.strftime("%a %H:%M", time.localtime(r[7])), "last": r[8] or ""})
+    return json.dumps(out)
+
+def task_add(request, spec):
+    from engine import scheduler as s
+    spec = spec.strip().lower().split()
+    try:
+        if not request.strip():
+            return "ERR:Say what the task should do"
+        if len(spec) == 2 and spec[0] == "daily":
+            s.add(request[:40], request, "", spec[1], None)
+        elif len(spec) == 2 and spec[0] == "every":
+            s.add(request[:40], request, "", None, int(spec[1]))
+        else:
+            return "ERR:Use 'daily 07:30' or 'every 60' (minutes, at least 15)"
+    except Exception as e:
+        return "ERR:" + str(e)
+    return "ok"
+
+def task_toggle(tid):
+    from engine import scheduler as s
+    with s._db() as c:
+        c.execute("UPDATE tasks SET enabled=1-enabled WHERE id=?", (int(tid),))
+    return "ok"
+
+def task_remove(tid):
+    from engine import scheduler as s
+    with s._db() as c:
+        c.execute("DELETE FROM tasks WHERE id=?", (int(tid),))
+    return "ok"
+
+def task_run_now(tid):
+    from engine import scheduler as s
+    with s._db() as c:
+        row = c.execute("SELECT id,name,request,url FROM tasks WHERE id=?", (int(tid),)).fetchone()
+    if not row:
+        return "no such task"
+    return str(respond(row[2]))
+
+def tasks_run_due():
+    import json, time
+    from engine import scheduler as s
+    with s._db() as c:
+        due = c.execute("SELECT id,name,request,url,kind,at,every_min FROM tasks WHERE enabled=1 AND next_run<=?", (time.time(),)).fetchall()
+    ran = []
+    for row in due[:3]:
+        try:
+            out = str(respond(row[2]))
+            status = "failed: no model" if "no answer" in out.lower() else "ok"
+        except Exception as e:
+            out, status = "", "failed: " + str(e)[:100]
+        done = time.time()
+        with s._db() as c:
+            c.execute("UPDATE tasks SET last_run=?, last_status=?, next_run=? WHERE id=?",
+                      (done, status, s._next(row[4], row[5], row[6], done), row[0]))
+        ran.append({"name": row[1], "report": (out or status)[:900]})
+    return json.dumps({"due": len(due), "ran": ran})

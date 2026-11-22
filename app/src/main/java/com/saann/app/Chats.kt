@@ -119,6 +119,7 @@ object ChatStore {
 }
 
 object Recents {
+    var onSettings: (() -> Unit)? = null
     private const val PANEL = 0xFF14171C.toInt()
     private const val SEL = 0xFF232830.toInt()
     private const val INK = 0xFFF5F3EE.toInt()
@@ -142,6 +143,12 @@ object Recents {
         title.textSize = 22f
         title.setTypeface(title.typeface, Typeface.BOLD)
         top.addView(title, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        val gear = IconView(a, "gear", DIM)
+        gear.setOnClickListener {
+            d.dismiss()
+            onSettings?.invoke()
+        }
+        top.addView(gear, LinearLayout.LayoutParams(dp(34), dp(34)))
         val x = IconView(a, "close", DIM)
         x.setOnClickListener { d.dismiss() }
         top.addView(x, LinearLayout.LayoutParams(dp(34), dp(34)))
