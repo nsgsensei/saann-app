@@ -26,6 +26,12 @@ def _local(prompt, max_tokens, schema, temperature, tier="main"):
             "max_tokens": max_tokens, "temperature": temperature}
     if schema:
         body["response_format"] = {"type": "json_object", "schema": schema}
+    try:
+        from engine import media
+        if media._stream_cb() and not schema:
+            return media.local_stream("http://127.0.0.1:%d/v1/chat/completions" % cfg["port"], body), cfg["model"]
+    except Exception:
+        pass
     data = _post("http://127.0.0.1:%d/v1/chat/completions" % cfg["port"],
                  body, {"Content-Type": "application/json"})
     return data["choices"][0]["message"]["content"].strip(), cfg["model"]

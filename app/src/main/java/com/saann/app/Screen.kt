@@ -19,6 +19,7 @@ object Screen {
                     "ok"
                 }
                 "live_step" -> Live.step(a)
+                "stream" -> Live.stream(a)
                 "open_app" -> openApp(act, a)
                 "list_apps" -> listApps(act)
                 else -> {

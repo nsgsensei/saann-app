@@ -231,29 +231,56 @@ def command(msg):
     return "jarvis mode: %s, address: %s\n/jarvis on | off | call me NAME | call me none" % ("on" if c["on"] else "off", c["address"] or "none")
 
 
+def _run(fn, msg, a, k):
+    try:
+        from engine import media
+        media.stream_on()
+    except Exception:
+        media = None
+    try:
+        return fn(msg, *a, **k)
+    finally:
+        try:
+            media.stream_off()
+        except Exception:
+            pass
+
+
 def wrap(fn):
+    """Natural replies, plus the cloud and media commands. Safe to apply twice."""
     if getattr(fn, "_jarvis", False):
         return fn
 
     def w(msg, *a, **k):
         try:
             text = str(msg)
-            if text.strip().lower().startswith("/jarvis"):
+            low = text.strip().lower()
+            first = low.split(" ")[0]
+            if low.startswith("/jarvis"):
                 return command(text)
-            if text.strip().lower() == "/audit":
+            if first in ("/setup", "/key", "/cloud", "/image", "/see", "/pdf"):
+                from engine import cloud, media
+                r = media.command(text)
+                return r if r is not None else cloud.command(text)
+            if low == "/audit":
                 from safety.permissions import recent_audit
                 return recent_audit(10)
-            if text.strip().lower().split(" ")[0] in ("/setup", "/key", "/cloud"):
-                from engine import cloud
-                return cloud.command(text)
+            if not text.lstrip().startswith("/"):
+                from engine import media
+                r = media.process(text)
+                if r:
+                    if r[0] == "answer":
+                        return r[1]
+                    msg = r[1]
+                    text = str(msg)
             if text.lstrip().startswith("/") or not cfg()["on"]:
-                return fn(msg, *a, **k)
+                return _run(fn, msg, a, k)
             quick = local(text)
             if quick is not None:
                 return quick
         except Exception:
             return fn(msg, *a, **k)
-        out = fn(msg, *a, **k)
+        out = _run(fn, msg, a, k)
         try:
             return polish(msg, out)
         except Exception:

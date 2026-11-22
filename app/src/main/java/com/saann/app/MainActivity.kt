@@ -274,6 +274,7 @@ class MainActivity : Activity() {
         ServerGuard.onStatus = { s -> runOnUiThread { setStatus(s) } }
         ServerGuard.kick()
         onStatus = { s -> runOnUiThread { setStatus(s); brain.pulse(s) } }
+        Live.onStream = { s -> onStreamText(s) }
         Live.onStep = { phase, tool, args, ok, res ->
             runOnUiThread { handleStep(phase, tool, args, ok, res) }
         }
@@ -340,15 +341,59 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     hideTyping()
                     finishCard()
-                    addMsg(r, false)
-                    VoiceWindow.onReply(r)
-                    AgentService.notifyIfAway(this, r)
-                    Voice.speak(r)
+                    val spoken = r.replace(Regex("\\[image: .+?\\]"), "").trim()
+                    addReply(r)
+                    VoiceWindow.onReply(spoken)
+                    AgentService.notifyIfAway(this, spoken)
+                    Voice.speak(spoken)
                     setBusy(false)
                     setStatus("Ready")
                 }
             }
         }
+    }
+
+    // streaming: words appear in the thinking bubble as they are written
+    private fun onStreamText(s: String) {
+        runOnUiThread {
+            typing?.let {
+                ui.removeCallbacks(dotTask)
+                it.alpha = 1f
+                it.text = s
+                if (nearBottom()) scrollDown()
+            }
+        }
+    }
+
+    // a reply may carry "[image: /path]" lines (generated pictures); show them inline
+    private fun addReply(r: String) {
+        val rx = Regex("\\[image: (.+?)\\]")
+        val paths = rx.findAll(r).map { it.groupValues[1] }.toList()
+        val clean = r.replace(rx, "").replace(Regex("\n{3,}"), "\n\n").trim()
+        if (clean.isNotEmpty()) addMsg(clean, false)
+        for (p in paths) addImage(p)
+    }
+
+    private fun addImage(path: String) {
+        val o = android.graphics.BitmapFactory.Options()
+        o.inJustDecodeBounds = true
+        android.graphics.BitmapFactory.decodeFile(path, o)
+        var s = 1
+        while (o.outWidth / s > 1200) s *= 2
+        val o2 = android.graphics.BitmapFactory.Options()
+        o2.inSampleSize = s
+        val bm = android.graphics.BitmapFactory.decodeFile(path, o2) ?: return
+        val iv = android.widget.ImageView(this)
+        iv.setImageBitmap(bm)
+        iv.adjustViewBounds = true
+        iv.scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+        val lp = LinearLayout.LayoutParams((resources.displayMetrics.widthPixels * 0.78f).toInt(), WRAP_CONTENT)
+        lp.gravity = Gravity.START
+        lp.topMargin = dp(5)
+        lp.bottomMargin = dp(5)
+        iv.layoutParams = lp
+        iv.setOnClickListener { Previewer.showFile(this, File(path)) }
+        place(iv, true)
     }
 
     private fun agentLabel(): String =
@@ -396,6 +441,7 @@ class MainActivity : Activity() {
         VoiceWindow.dismiss()
         onStatus = null
         Live.onStep = null
+        Live.onStream = null
         Preview.listener = null
         ui.removeCallbacksAndMessages(null)
         super.onDestroy()

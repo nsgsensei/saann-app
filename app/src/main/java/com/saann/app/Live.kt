@@ -4,6 +4,13 @@ import org.json.JSONObject
 
 // Receives "what the agent is doing" events from Python and passes them to the screen.
 object Live {
+    @Volatile var onStream: ((String) -> Unit)? = null
+
+    fun stream(s: String): String {
+        onStream?.invoke(s)
+        return "ok"
+    }
+
     @Volatile var onStep: ((String, String, String, Boolean, String) -> Unit)? = null
 
     fun step(json: String): String {

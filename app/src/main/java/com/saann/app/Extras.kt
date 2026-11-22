@@ -44,6 +44,7 @@ object Attach {
         val ext = name.substringAfterLast('.', "").lowercase()
         return when {
             (mime ?: "").startsWith("image/") || ext in imgExt -> "image"
+            ext == "pdf" || mime == "application/pdf" -> "pdf"
             (mime ?: "").startsWith("text/") || ext in textExt -> "text"
             else -> "file"
         }
@@ -93,6 +94,7 @@ object Attach {
                     if (b == null) "(could not open the image)" else Vision.look(b)
                 }
                 "text" -> File(a.path).readText().take(6000)
+                "pdf" -> "(PDF attached: " + a.name + ". It is read when you send.)"
                 else -> "(this file type can't be read yet; it is saved at " + a.path + ")"
             }
         } catch (e: Throwable) {
@@ -104,7 +106,7 @@ object Attach {
     fun compose(text: String, list: List<Attachment>): String {
         val sb = StringBuilder(if (text.isBlank()) "Look at the attachment and tell me what it is." else text)
         for (a in list) {
-            sb.append("\n\n[attached ").append(a.kind).append(": ").append(a.name)
+            sb.append("\n\n[attached ").append(a.kind).append(": ").append(a.name).append(" (file: ").append(a.path).append(")")
             sb.append(if (a.kind == "image") ", text found on it:]\n" else "]\n")
             sb.append(a.text.take(3000))
         }
