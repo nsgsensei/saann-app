@@ -2,6 +2,7 @@ package com.saann.app
 
 import android.app.Activity
 import android.app.Dialog
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -13,6 +14,7 @@ import android.os.Looper
 import android.provider.OpenableColumns
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -34,8 +36,11 @@ object Voice {
     @Volatile var speakReplies = false
     @Volatile var recognizer: ((Activity) -> Unit)? = null
     @Volatile var onHeard: ((String) -> Unit)? = null
+    private val ui = Handler(Looper.getMainLooper())
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var queued: (() -> Unit)? = null
+    private var doneCb: (() -> Unit)? = null
 
     fun listen(act: Activity) {
         val custom = recognizer
@@ -43,14 +48,7 @@ object Voice {
             custom(act)
             return
         }
-        try {
-            val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to SAANN")
-            act.startActivityForResult(i, REQ)
-        } catch (e: Exception) {
-            Toast.makeText(act, "No speech recogniser found on this phone", Toast.LENGTH_LONG).show()
-        }
+        VoiceWindow.show(act) { false }
     }
 
     fun result(code: Int, res: Int, data: Intent?): String? {
@@ -60,18 +58,56 @@ object Voice {
         return t
     }
 
-    fun enableSpeech(act: Activity, on: Boolean) {
-        speakReplies = on
-        if (on && tts == null) {
-            tts = TextToSpeech(act.applicationContext) { st ->
-                ttsReady = st == TextToSpeech.SUCCESS
-                if (ttsReady) tts?.language = Locale.getDefault()
+    private fun finish() {
+        val c = doneCb
+        doneCb = null
+        if (c != null) ui.post { c() }
+    }
+
+    private fun initTts(ctx: Context) {
+        if (tts != null) return
+        tts = TextToSpeech(ctx.applicationContext) { st ->
+            ttsReady = st == TextToSpeech.SUCCESS
+            if (ttsReady) {
+                tts?.language = Locale.getDefault()
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(id: String?) {}
+                    override fun onDone(id: String?) { finish() }
+                    override fun onError(id: String?) { finish() }
+                })
+                val q = queued
+                queued = null
+                q?.invoke()
+            } else {
+                queued = null
+                finish()
             }
         }
     }
 
+    private fun say(text: String) {
+        tts?.speak(text.replace(Regex("[*#`_]"), "").take(600), TextToSpeech.QUEUE_FLUSH, null, "saann")
+    }
+
+    fun enableSpeech(act: Activity, on: Boolean) {
+        speakReplies = on
+        if (on) initTts(act)
+    }
+
+    fun speakThen(ctx: Context, text: String, done: () -> Unit) {
+        initTts(ctx)
+        doneCb = done
+        if (ttsReady) say(text) else queued = { say(text) }
+    }
+
     fun speak(text: String) {
-        if (speakReplies && ttsReady) tts?.speak(text.take(400), TextToSpeech.QUEUE_FLUSH, null, "saann")
+        if (speakReplies && ttsReady && !VoiceWindow.isOpen) say(text)
+    }
+
+    fun stopSpeak() {
+        doneCb = null
+        queued = null
+        try { tts?.stop() } catch (e: Exception) { }
     }
 }
 

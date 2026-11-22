@@ -196,54 +196,63 @@ class MainActivity : Activity() {
             jump.visibility = if (nearBottom()) View.GONE else View.VISIBLE
         }
 
-        // input
-        val bar = LinearLayout(this)
-        bar.orientation = LinearLayout.HORIZONTAL
-        bar.gravity = Gravity.CENTER_VERTICAL
-        bar.setPadding(dp(10), dp(8), dp(10), dp(10))
+        // input: one rounded card (attachments, text, then + / mic / send)
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.VERTICAL
+        card.setPadding(dp(10), dp(8), dp(10), dp(8))
+        val cg = GradientDrawable()
+        cg.cornerRadius = dp(26).toFloat()
+        cg.setColor(PANEL)
+        cg.setStroke(dp(1), 0x6600E5FF)
+        card.background = cg
+        chips = LinearLayout(this)
+        chips.orientation = LinearLayout.HORIZONTAL
+        val chipScroll = HorizontalScrollView(this)
+        chipScroll.isHorizontalScrollBarEnabled = false
+        chipScroll.addView(chips)
+        card.addView(chipScroll, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         input = EditText(this)
-        input.hint = "Talk to SAANN"
+        input.hint = "Message SAANN"
         input.setHintTextColor(0x886FD6E6.toInt())
         input.setTextColor(INK)
-        input.textSize = 15f
-        input.maxLines = 4
+        input.textSize = 16f
+        input.maxLines = 6
         input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
             InputType.TYPE_TEXT_FLAG_MULTI_LINE
-        input.setPadding(dp(16), dp(10), dp(16), dp(10))
-        val ib = GradientDrawable()
-        ib.cornerRadius = dp(22).toFloat()
-        ib.setColor(PANEL)
-        ib.setStroke(dp(1), 0x6600E5FF)
-        input.background = ib
-        bar.addView(iconBtn("+") { attachMenu() })
-        bar.addView(input, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        bar.addView(iconBtn("🎤") { Voice.listen(this) })
+        input.background = null
+        input.setPadding(dp(6), dp(8), dp(6), dp(4))
+        card.addView(input, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        row.gravity = Gravity.CENTER_VERTICAL
+        row.addView(iconBtn("+") { attachMenu() })
+        row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        row.addView(iconBtn("🎤") { startVoice() })
         send = Button(this)
-        send.text = "Send"
+        send.text = "↑"
         send.setAllCaps(false)
         send.setTextColor(BG)
-        send.textSize = 14f
+        send.textSize = 20f
+        send.setTypeface(send.typeface, Typeface.BOLD)
         val sb = GradientDrawable()
-        sb.cornerRadius = dp(22).toFloat()
+        sb.shape = GradientDrawable.OVAL
         sb.setColor(CYAN)
         send.background = sb
         send.minHeight = 0
         send.minimumHeight = 0
         send.minWidth = 0
         send.minimumWidth = 0
-        send.setPadding(dp(18), dp(11), dp(18), dp(11))
+        send.setPadding(0, 0, 0, 0)
         send.isEnabled = false
         send.alpha = 0.4f
-        val sl = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
-        sl.leftMargin = dp(8)
-        bar.addView(send, sl)
-        chips = LinearLayout(this)
-        chips.orientation = LinearLayout.HORIZONTAL
-        chips.setPadding(dp(12), 0, dp(12), 0)
-        val chipScroll = HorizontalScrollView(this)
-        chipScroll.addView(chips)
-        root.addView(chipScroll, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-        root.addView(bar)
+        val slp = LinearLayout.LayoutParams(dp(40), dp(40))
+        slp.leftMargin = dp(4)
+        row.addView(send, slp)
+        card.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        val bar = FrameLayout(this)
+        bar.setPadding(dp(10), dp(6), dp(10), dp(10))
+        bar.addView(card, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        root.addView(bar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         setContentView(root)
 
         loadHistory()
@@ -314,6 +323,7 @@ class MainActivity : Activity() {
                     hideTyping()
                     finishCard()
                     addMsg(r, false)
+                    VoiceWindow.onReply(r)
                     Voice.speak(r)
                     setBusy(false)
                     setStatus("Ready")
@@ -603,6 +613,29 @@ class MainActivity : Activity() {
         iv.setOnClickListener { d.dismiss() }
         d.setContentView(iv)
         d.show()
+    }
+
+    private fun startVoice() {
+        if (Build.VERSION.SDK_INT >= 23 &&
+            checkSelfPermission(Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 7)
+            return
+        }
+        VoiceWindow.show(this) { t ->
+            if (!ready || busy) {
+                false
+            } else {
+                input.setText(t)
+                send.performClick()
+                true
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 7 && grantResults.isNotEmpty() &&
+            grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) startVoice()
     }
 
     private fun iconBtn(label: String, onClick: () -> Unit): TextView {
