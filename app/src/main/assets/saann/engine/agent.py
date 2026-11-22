@@ -14,6 +14,7 @@ from engine.runner import _parse, _cloud_allowed, Budget
 AGENT = "phone-agent"
 STATUS = lambda text: None
 STOP = {"flag": False}
+STEP = lambda phase, tool, args, ok, result: None
 MAX_STEPS = 15
 MAX_SENSITIVE = 10
 TYPES = {"string": str, "integer": int}
@@ -53,6 +54,8 @@ def quick(goal):
         return ("screen_look", {})
     if re.fullmatch(r"(?:please )?lock (?:the |my )?(?:phone|screen)", g):
         return ("phone_system", {"action": "lock"})
+    if re.search(r"\b(show|let me see|send)( me)?\b.*\b(the |my )?(screen|screenshot)\b", g):
+        return ("screen_shot", {})
     if re.search(r"accessibility (settings|service)", g):
         return ("phone_a11y_settings", {})
     if re.search(r"(read|what'?s on|what is on) (the |my )?screen|screen (content|text)", g):
@@ -168,12 +171,14 @@ def run(goal, max_steps=MAX_STEPS):
             if sensitive > MAX_SENSITIVE:
                 return _end(goal, False, "Too many sensitive actions in one task; stopped.", steps)
         STATUS("Step %d: %s" % (i + 1, tool_name))
+        STEP("start", tool_name, args, True, "")
         res = call_tool(AGENT, tool_name, **args)
         if TOOLS[tool_name].get("private"):
             private = True
         shown = str(res.get("result") if res["ok"] else "ERROR: " + res["error"])[:300]
         steps.append({"tool": tool_name, "args": args, "ok": res["ok"], "result": shown})
         history.append((tool_name, args, shown))
+        STEP("end", tool_name, args, res["ok"], "(private)" if TOOLS[tool_name].get("private") else shown)
         log_event(AGENT, "agent.step", input=goal[:150],
                   output=json.dumps({"tool": tool_name, "ok": res["ok"]}),
                   model=tier, outcome="verified" if res["ok"] else "failed")

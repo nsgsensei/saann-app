@@ -18,6 +18,7 @@ object Screen {
                     act.runOnUiThread { act.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                     "ok"
                 }
+                "live_step" -> Live.step(a)
                 "open_app" -> openApp(act, a)
                 "list_apps" -> listApps(act)
                 else -> {

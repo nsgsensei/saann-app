@@ -27,6 +27,17 @@ def init(files_dir, bridge):
             pass
 
     agent.STATUS = _status
+
+    def _step(phase, tool, args, ok, result):
+        import json
+        try:
+            a = json.dumps(args)[:160] if args else ""
+            bridge.call("live_step", json.dumps({"phase": phase, "tool": tool, "args": a,
+                                                   "ok": bool(ok), "result": str(result)[:200]}), "")
+        except Exception:
+            pass
+
+    agent.STEP = _step
     return "ready"
 
 def respond(msg):
