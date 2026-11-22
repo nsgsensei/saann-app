@@ -196,21 +196,21 @@ class MainActivity : Activity() {
             jump.visibility = if (nearBottom()) View.GONE else View.VISIBLE
         }
 
-        // input: one rounded card (attachments, text, then + / mic / send)
-        val card = LinearLayout(this)
-        card.orientation = LinearLayout.VERTICAL
-        card.setPadding(dp(10), dp(8), dp(10), dp(8))
+        // input: one rounded inCard (attachments, text, then + / mic / send)
+        val inCard = LinearLayout(this)
+        inCard.orientation = LinearLayout.VERTICAL
+        inCard.setPadding(dp(10), dp(8), dp(10), dp(8))
         val cg = GradientDrawable()
         cg.cornerRadius = dp(26).toFloat()
         cg.setColor(PANEL)
         cg.setStroke(dp(1), 0x6600E5FF)
-        card.background = cg
+        inCard.background = cg
         chips = LinearLayout(this)
         chips.orientation = LinearLayout.HORIZONTAL
         val chipScroll = HorizontalScrollView(this)
         chipScroll.isHorizontalScrollBarEnabled = false
         chipScroll.addView(chips)
-        card.addView(chipScroll, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        inCard.addView(chipScroll, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         input = EditText(this)
         input.hint = "Message SAANN"
         input.setHintTextColor(0x886FD6E6.toInt())
@@ -221,7 +221,7 @@ class MainActivity : Activity() {
             InputType.TYPE_TEXT_FLAG_MULTI_LINE
         input.background = null
         input.setPadding(dp(6), dp(8), dp(6), dp(4))
-        card.addView(input, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        inCard.addView(input, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
@@ -248,10 +248,10 @@ class MainActivity : Activity() {
         val slp = LinearLayout.LayoutParams(dp(40), dp(40))
         slp.leftMargin = dp(4)
         row.addView(send, slp)
-        card.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        inCard.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         val bar = FrameLayout(this)
         bar.setPadding(dp(10), dp(6), dp(10), dp(10))
-        bar.addView(card, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        bar.addView(inCard, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(bar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         setContentView(root)
 
