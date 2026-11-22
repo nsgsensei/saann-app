@@ -125,9 +125,12 @@ class MainActivity : Activity() {
         val head = LinearLayout(this)
         head.orientation = LinearLayout.HORIZONTAL
         head.gravity = Gravity.CENTER_VERTICAL
-        head.setPadding(dp(16), dp(10), dp(16), dp(10))
+        head.setPadding(dp(10), dp(10), dp(12), dp(10))
         orb = OrbView(this)
-        head.addView(orb, LinearLayout.LayoutParams(dp(46), dp(46)))
+        val menu = IconView(this, "menu", INK)
+        menu.setOnClickListener { openRecents() }
+        head.addView(menu, LinearLayout.LayoutParams(dp(34), dp(34)))
+        head.addView(orb, LinearLayout.LayoutParams(dp(42), dp(42)))
         orb.setOnClickListener { toggleBrain() }
         val col = LinearLayout(this)
         col.orientation = LinearLayout.VERTICAL
@@ -136,7 +139,7 @@ class MainActivity : Activity() {
         title.text = "SAANN"
         title.setTextColor(INK)
         title.textSize = 18f
-        title.letterSpacing = 0.25f
+        title.letterSpacing = 0.12f
         title.setTypeface(title.typeface, Typeface.BOLD)
         status = TextView(this)
         status.setTextColor(DIM)
@@ -266,6 +269,8 @@ class MainActivity : Activity() {
             requestPermissions(arrayOf(ServerGuard.RUN), 9)
         }
         ServerGuard.init(this)
+        Voice.restore(this)
+        Ui2.onChatTap = { openRecents() }
         ServerGuard.onStatus = { s -> runOnUiThread { setStatus(s) } }
         ServerGuard.kick()
         onStatus = { s -> runOnUiThread { setStatus(s); brain.pulse(s) } }
@@ -308,10 +313,8 @@ class MainActivity : Activity() {
             refreshChips()
             input.setText("")
             if (t.startsWith("/voice")) {
-                val on = t.contains("on")
-                Voice.enableSpeech(this, on)
                 addMsg(t, true, false)
-                addMsg(if (on) "Voice replies on." else "Voice replies off.", false, false)
+                addMsg(Voice.command(this, t.removePrefix("/voice")), false, false)
                 return@setOnClickListener
             }
             if (t.startsWith("/bg ")) {
@@ -466,6 +469,7 @@ class MainActivity : Activity() {
 
     private fun addMsg(text: String, mine: Boolean, save: Boolean = true) {
         place(bubble(text, mine), mine)
+        place(actions(text, mine), mine)
         if (save) remember(text, mine)
     }
 
@@ -485,7 +489,7 @@ class MainActivity : Activity() {
     }
 
     // ---------- chat history (kept only on this phone) ----------
-    private fun histFile(): File = File(filesDir, "saann/data/chat.json")
+    private fun histFile(): File = ChatStore.currentFile(this)
 
     private fun loadHistory() {
         try {
@@ -495,6 +499,7 @@ class MainActivity : Activity() {
             for (i in 0 until a.length()) {
                 val o = a.getJSONObject(i)
                 chat.addView(bubble(o.getString("t"), o.getBoolean("m")))
+                chat.addView(actions(o.getString("t"), o.getBoolean("m")))
                 hist.put(o)
             }
             scrollDown()
@@ -511,6 +516,62 @@ class MainActivity : Activity() {
             f.writeText(hist.toString())
         } catch (e: Exception) {
         }
+    }
+
+    private fun openRecents() {
+        Recents.show(this, { id -> openChat(id) }, { newChat() }, { id -> if (id == ChatStore.currentId(this)) newChat() })
+    }
+
+    private fun resetChatViews() {
+        chat.removeAllViews()
+        while (hist.length() > 0) hist.remove(0)
+        card = null
+        lastCard = null
+        typing = null
+    }
+
+    private fun openChat(id: String) {
+        if (busy) {
+            Toast.makeText(this, "Wait for the reply to finish first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        ChatStore.setCurrent(this, id)
+        resetChatViews()
+        loadHistory()
+        scrollDown()
+    }
+
+    private fun newChat() {
+        if (busy) {
+            Toast.makeText(this, "Wait for the reply to finish first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        ChatStore.create(this)
+        resetChatViews()
+        addMsg("New chat. What's on your mind?", false, false)
+    }
+
+    private fun actions(text: String, mine: Boolean): View {
+        val row = LinearLayout(this)
+        row.orientation = LinearLayout.HORIZONTAL
+        val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
+        lp.gravity = if (mine) Gravity.END else Gravity.START
+        lp.leftMargin = dp(6)
+        lp.rightMargin = dp(6)
+        row.layoutParams = lp
+        val cp = IconView(this, "copy", DIM)
+        cp.setOnClickListener {
+            val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("SAANN", text))
+            Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+        }
+        row.addView(cp, LinearLayout.LayoutParams(dp(30), dp(26)))
+        if (!mine) {
+            val sp = IconView(this, "speaker", DIM)
+            sp.setOnClickListener { Voice.speakThen(this, text) { } }
+            row.addView(sp, LinearLayout.LayoutParams(dp(30), dp(26)))
+        }
+        return row
     }
 
     private fun clearChat() {
@@ -722,7 +783,7 @@ class MainActivity : Activity() {
         chips.removeAllViews()
         for (a in pending.toList()) {
             val c = TextView(this)
-            c.text = (if (a.ready) "📎 " else "… ") + a.name.take(22) + "  ✕"
+            c.text = (if (a.ready) "📎 " else "… ") + a.name.take(24)
             c.setTextColor(BODY)
             c.textSize = 12f
             c.setPadding(dp(12), dp(6), dp(12), dp(6))
@@ -732,8 +793,10 @@ class MainActivity : Activity() {
             g.setStroke(dp(1), 0x33FFFFFF)
             c.background = g
             c.setOnClickListener {
-                pending.remove(a)
-                refreshChips()
+                Previewer.show(this, a.name, a.path, a.kind, a.text) {
+                    pending.remove(a)
+                    refreshChips()
+                }
             }
             val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
             lp.rightMargin = dp(6)

@@ -69,6 +69,19 @@ class IconView(ctx: Context, val kind: String, var tint: Int = 0xFF00E5FF.toInt(
                 c.drawLine(-4 * k, -5 * k, -2 * k, -8 * k, p); c.drawLine(-2 * k, -8 * k, 2 * k, -8 * k, p); c.drawLine(2 * k, -8 * k, 4 * k, -5 * k, p)
                 c.drawCircle(0f, 1.5f * k, 3.5f * k, p)
             }
+            "menu" -> {
+                c.drawLine(-8 * k, -6 * k, 8 * k, -6 * k, p); c.drawLine(-8 * k, 0f, 8 * k, 0f, p); c.drawLine(-8 * k, 6 * k, 3 * k, 6 * k, p)
+            }
+            "close" -> { c.drawLine(-7 * k, -7 * k, 7 * k, 7 * k, p); c.drawLine(7 * k, -7 * k, -7 * k, 7 * k, p) }
+            "copy" -> {
+                c.drawRoundRect(RectF(-3 * k, -9 * k, 8 * k, 4 * k), 2 * k, 2 * k, p)
+                c.drawRoundRect(RectF(-8 * k, -4 * k, 3 * k, 9 * k), 2 * k, 2 * k, p)
+            }
+            "speaker" -> {
+                val t = Path(); t.moveTo(-8 * k, -3 * k); t.lineTo(-4 * k, -3 * k); t.lineTo(1 * k, -7 * k); t.lineTo(1 * k, 7 * k); t.lineTo(-4 * k, 3 * k); t.lineTo(-8 * k, 3 * k); t.close(); c.drawPath(t, p)
+                c.drawArc(RectF(-3 * k, -5 * k, 5 * k, 5 * k), -50f, 100f, false, p)
+                c.drawArc(RectF(-4 * k, -9 * k, 9 * k, 9 * k), -50f, 100f, false, p)
+            }
             "shot" -> {
                 c.drawRoundRect(RectF(-5 * k, -9 * k, 5 * k, 9 * k), 2.5f * k, 2.5f * k, p)
                 c.drawLine(-1.5f * k, 6 * k, 1.5f * k, 6 * k, p)
@@ -83,8 +96,9 @@ object Ui2 {
     private const val CYAN = 0xFF00E5FF.toInt()
     private const val INK = 0xFFF5F3EE.toInt()
     private const val DIM = 0xFF8B93A1.toInt()
+    var onChatTap: (() -> Unit)? = null
 
-    private fun sheet(a: Activity): Pair<Dialog, LinearLayout> {
+    fun sheet(a: Activity): Pair<Dialog, LinearLayout> {
         val den = a.resources.displayMetrics.density
         val d = Dialog(a)
         d.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
@@ -177,7 +191,9 @@ object Ui2 {
             val l = TextView(a)
             l.text = n; l.textSize = 11f; l.setTextColor(if (on) CYAN else DIM); l.gravity = Gravity.CENTER
             c.addView(l)
-            if (!on) c.setOnClickListener { panel(a, n, k) }
+            if (on) c.setOnClickListener { onChatTap?.invoke() }
+            else if (k == "library") c.setOnClickListener { Recents.library(a) }
+            else c.setOnClickListener { panel(a, n, k) }
             bar.addView(c, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         }
         return bar
