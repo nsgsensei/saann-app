@@ -417,6 +417,13 @@ object Onboarding {
                 }
             }
 
+            // SAANN_DIAGNOSTIC_ESCAPE_V1
+            button("Open in offline / diagnostic mode") {
+                Keys.setFlag(a, "connected_setup_v1", true)
+                Keys.setFlag(a, "diagnostic_mode", true)
+                d.dismiss()
+            }
+
             if (!firstRun) {
                 button("Close setup") { d.dismiss() }
             }
