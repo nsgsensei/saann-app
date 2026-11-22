@@ -237,7 +237,7 @@ object Onboarding {
                         }
                     }
 
-                    button("Test connection", true) {
+                    button(if (provider == "cloudflare") "Test connection" else "Connect and continue", true) {
                         saveDraft()
                         passed = false
                         val testedKey = key.text.toString().trim()
@@ -253,6 +253,12 @@ object Onboarding {
                             passed = result.optBoolean("ok")
                             checkedKey = testedKey
                             checkedAccount = testedAccount
+                            // SAANN_FAST_ADVANCE_V2
+                            if (passed && provider != "cloudflare") {
+                                saveDraft()
+                                page++
+                                render()
+                            }
                         }
                     }
 
@@ -295,10 +301,15 @@ object Onboarding {
                 3 -> {
                     text("Set up your voice", 23f)
                     text(
-                        "This build uses your phone's speech services. No voice API key is required. Test the speaker, then confirm whether you heard it.",
+                        "Choose ElevenLabs cloud voice or the phone voice. Cloud voice sends spoken text to ElevenLabs and uses provider credits. Microphone input continues to use your phone's speech service.",
                         15f, DIM
                     )
                     val status = text("Voice has not been confirmed.", 14f, DIM)
+
+                    // SAANN_VOICE_SETUP_V2
+                    button("Connect ElevenLabs cloud voice") {
+                        CloudVoice.show(a)
+                    }
 
                     button("Play SAANN voice", true) {
                         status.text = Voice.command(a, "test")

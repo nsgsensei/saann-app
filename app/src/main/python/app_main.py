@@ -38,6 +38,9 @@ def init(files_dir, bridge):
             pass
 
     agent.STEP = _step
+    # SAANN_DISCOVERY_STARTUP_V2
+    from engine import connection_upgrade
+    connection_upgrade.install()
     return "ready"
 
 FAST_OK = ("phone_battery", "phone_torch", "phone_volume_set", "phone_brightness", "phone_wifi", "phone_open_url")
@@ -312,6 +315,9 @@ _setup_legacy_keys = None
 def setup_api(operation, payload="{}"):
     import json
     from engine import cloud, media
+    # SAANN_DISCOVERY_SETUP_V2
+    from engine import connection_upgrade
+    connection_upgrade.install()
 
     global _setup_credentials
     global _setup_installed

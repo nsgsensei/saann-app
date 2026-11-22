@@ -222,16 +222,24 @@ object Voice {
     }
 
     fun speakThen(ctx: Context, text: String, done: () -> Unit) {
+        // SAANN_CLOUD_VOICE_V2
+        app = ctx.applicationContext
+        if (CloudVoice.speak(ctx, clean(text), done)) return
         initTts(ctx)
         doneCb = done
         if (ttsReady) say(text) else queued = { say(text) }
     }
 
     fun speak(text: String) {
+        val context = app
+        if (speakReplies && !VoiceWindow.isOpen && context != null) {
+            if (CloudVoice.speak(context, clean(text)) {}) return
+        }
         if (speakReplies && ttsReady && !VoiceWindow.isOpen) say(text)
     }
 
     fun stopSpeak() {
+        CloudVoice.stop()
         doneCb = null
         queued = null
         focus(false)

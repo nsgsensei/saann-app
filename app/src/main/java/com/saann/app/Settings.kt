@@ -64,6 +64,12 @@ object Settings {
             Voice.command(a, "rate " + next)
         }
         row("Voice sample", { "Play" }) { Voice.command(a, "test") }
+        // SAANN_CLOUD_VOICE_SETTINGS_V2
+        row("Cloud voice", {
+            if (Keys.flag(a, "cloud_voice_on")) "ElevenLabs" else "Phone"
+        }) {
+            CloudVoice.show(a)
+        }
         row("Agent", { agentLabel().removePrefix("AGENT ").lowercase().replaceFirstChar { it.uppercase() } }) { onAgent() }
         row("Online help", { "Check" }) {
             Thread {
