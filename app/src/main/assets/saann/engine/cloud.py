@@ -21,7 +21,7 @@ STATE = ROOT / "data" / "cloud.json"
 PROVIDERS = {
     "groq": {
         "name": "Groq", "gives": "fast replies (Llama) and later speech to text",
-        "url": "https://api.groq.com/openai/v1/chat/completions", "model": "llama-3.3-70b-versatile",
+        "url": "https://api.groq.com/openai/v1/chat/completions", "model": "openai/gpt-oss-20b",
         "site": "https://console.groq.com/keys", "prefix": "gsk_", "daily": 400,
         "steps": ["Open console.groq.com/keys (say \"/setup groq open\" and I'll open it for you).",
                   "Sign in with Google. Skip any optional questions.",
@@ -167,7 +167,12 @@ def test(name):
     if not k:
         return "no key saved yet"
     try:
-        text, mid = _call(name, k, "Reply with the single word: ready", 8, None, 0.0, "Reply briefly.")
+        text, mid = _call(
+            name, k, "Reply with the single word: ready",
+            1024, None, 0.0, "Reply briefly."
+        )
+        if not text:
+            return "the provider responded but returned no final text"
         s = state(); s["cool"].pop(name, None); _save_state(s)
         return "working (%s)" % mid
     except urllib.error.HTTPError as e:
