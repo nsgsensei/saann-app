@@ -94,6 +94,7 @@ class MainActivity : Activity() {
     private val pending = ArrayList<Attachment>()
     private var camUri: android.net.Uri? = null
     private lateinit var chips: LinearLayout
+    private val SAANN_ORANGE = 0xFFFF8A3D.toInt()
     private var agentTv: TextView? = null
     private val dotTask = object : Runnable {
         override fun run() {
@@ -112,6 +113,9 @@ class MainActivity : Activity() {
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (Onboarding.needed(this)) {
+            Onboarding.show(this)
+        }
         super.onCreate(savedInstanceState)
         window.statusBarColor = BG
         window.navigationBarColor = BG
@@ -158,7 +162,7 @@ class MainActivity : Activity() {
         det.setOnClickListener { BrainDetail.show(this) }
         val ag = TextView(this)
         ag.text = agentLabel()
-        ag.setTextColor(CYAN)
+        ag.setTextColor(if (AgentService.listening) SAANN_ORANGE else CYAN)
         ag.textSize = 12f
         ag.maxLines = 1
         ag.letterSpacing = 0.15f
@@ -166,6 +170,14 @@ class MainActivity : Activity() {
         ag.setOnClickListener { cycleAgent() }
         agentTv = ag
         head.addView(ag)
+        val setup = TextView(this)
+        setup.text = "SETUP"
+        setup.setTextColor(SAANN_ORANGE)
+        setup.textSize = 12f
+        setup.letterSpacing = 0.15f
+        setup.setPadding(dp(10), dp(8), dp(4), dp(8))
+        setup.setOnClickListener { Onboarding.show(this) }
+        head.addView(setup)
         head.addView(det)
         root.addView(head)
 
