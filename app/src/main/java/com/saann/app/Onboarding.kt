@@ -24,20 +24,27 @@ object Onboarding {
     private val INK = 0xFFE8FBFF.toInt()
     private val DIM = 0xFF6FD6E6.toInt()
 
+    private data class Provider(
+        val first: String,
+        val second: String,
+        val third: String,
+        val fourth: String
+    )
+
     private val providers = listOf(
-        Triple(
+        Provider(
             "gemini",
             "Gemini — reasoning, photos and images",
             "Required. One free key lets SAANN think, understand photos, and create images.",
             "https://aistudio.google.com/apikey"
         ),
-        Triple(
+        Provider(
             "groq",
             "Groq — fast text backup",
             "Optional. SAANN can use it when Gemini is busy or unavailable.",
             "https://console.groq.com/keys"
         ),
-        Triple(
+        Provider(
             "elevenlabs",
             "ElevenLabs — SAANN’s voice",
             "Optional. Gives SAANN a natural speaking voice.",

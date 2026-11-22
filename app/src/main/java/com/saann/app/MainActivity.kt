@@ -113,10 +113,14 @@ class MainActivity : Activity() {
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        if (Onboarding.needed(this)) {
-            Onboarding.show(this)
-        }
         super.onCreate(savedInstanceState)
+        // SAANN_SETUP_AFTER_SUPER
+        window.decorView.post {
+            if (!isFinishing && !Keys.flag(this, "onboarded")) {
+                Onboarding.show(this)
+            }
+        }
+
         window.statusBarColor = BG
         window.navigationBarColor = BG
 
