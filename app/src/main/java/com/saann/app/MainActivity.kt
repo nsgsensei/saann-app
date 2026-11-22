@@ -78,7 +78,7 @@ class MainActivity : Activity() {
     private lateinit var chat: LinearLayout
     private lateinit var scroll: ScrollView
     private lateinit var input: EditText
-    private lateinit var send: Button
+    private lateinit var send: View
     private lateinit var orb: OrbView
     private lateinit var brain: BrainView
     private lateinit var status: TextView
@@ -196,12 +196,12 @@ class MainActivity : Activity() {
             jump.visibility = if (nearBottom()) View.GONE else View.VISIBLE
         }
 
-        // input: one rounded inCard (attachments, text, then + / mic / send)
+        // input: one row (+, text, mic, send) in a rounded card, chips on top
         val inCard = LinearLayout(this)
         inCard.orientation = LinearLayout.VERTICAL
-        inCard.setPadding(dp(10), dp(8), dp(10), dp(8))
+        inCard.setPadding(dp(8), dp(6), dp(8), dp(6))
         val cg = GradientDrawable()
-        cg.cornerRadius = dp(26).toFloat()
+        cg.cornerRadius = dp(28).toFloat()
         cg.setColor(PANEL)
         cg.setStroke(dp(1), 0x6600E5FF)
         inCard.background = cg
@@ -216,43 +216,34 @@ class MainActivity : Activity() {
         input.setHintTextColor(0x886FD6E6.toInt())
         input.setTextColor(INK)
         input.textSize = 16f
-        input.maxLines = 6
+        input.maxLines = 5
         input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
             InputType.TYPE_TEXT_FLAG_MULTI_LINE
         input.background = null
-        input.setPadding(dp(6), dp(8), dp(6), dp(4))
-        inCard.addView(input, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        input.setPadding(dp(6), dp(8), dp(6), dp(8))
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
-        row.addView(iconBtn("+") { attachMenu() })
-        row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        row.addView(iconBtn("🎤") { startVoice() })
-        send = Button(this)
-        send.text = "↑"
-        send.setAllCaps(false)
-        send.setTextColor(BG)
-        send.textSize = 20f
-        send.setTypeface(send.typeface, Typeface.BOLD)
-        val sb = GradientDrawable()
-        sb.shape = GradientDrawable.OVAL
-        sb.setColor(CYAN)
-        send.background = sb
-        send.minHeight = 0
-        send.minimumHeight = 0
-        send.minWidth = 0
-        send.minimumWidth = 0
-        send.setPadding(0, 0, 0, 0)
+        val plus = IconView(this, "plus", CYAN)
+        plus.setOnClickListener { attachMenu() }
+        row.addView(plus, LinearLayout.LayoutParams(dp(40), dp(40)))
+        row.addView(input, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        val mic = IconView(this, "mic", CYAN)
+        mic.setOnClickListener { startVoice() }
+        row.addView(mic, LinearLayout.LayoutParams(dp(40), dp(40)))
+        val up = IconView(this, "up", BG, CYAN)
+        send = up
         send.isEnabled = false
         send.alpha = 0.4f
-        val slp = LinearLayout.LayoutParams(dp(40), dp(40))
+        val slp = LinearLayout.LayoutParams(dp(38), dp(38))
         slp.leftMargin = dp(4)
         row.addView(send, slp)
         inCard.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         val bar = FrameLayout(this)
-        bar.setPadding(dp(10), dp(6), dp(10), dp(10))
+        bar.setPadding(dp(10), dp(6), dp(10), dp(6))
         bar.addView(inCard, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(bar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        root.addView(Ui2.navBar(this), LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         setContentView(root)
 
         loadHistory()
@@ -691,6 +682,18 @@ class MainActivity : Activity() {
     }
 
     private fun attachMenu() {
+        Ui2.addSheet(this, { pickMedia() }, { pickFile() }, { shotAttach() })
+    }
+
+    private fun pickMedia() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        i.addCategory(Intent.CATEGORY_OPENABLE)
+        i.type = "*/*"
+        i.putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*"))
+        startActivityForResult(i, 4418)
+    }
+
+    private fun attachMenuOld() {
         AlertDialog.Builder(this)
             .setItems(arrayOf("Screenshot of another app (3 s)", "Photo or file")) { _, w ->
                 if (w == 0) shotAttach() else pickFile()
