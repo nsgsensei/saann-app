@@ -119,3 +119,12 @@ def brain_view():
         return _v.json_text()
     except Exception as e:
         return '{"error": "%s"}' % str(e).replace('"', "'")
+
+# Jarvis-style natural replies (final replies only; live step card untouched)
+def respond(msg, _orig=respond):
+    try:
+        from engine import jarvis as _j
+        f = _j.wrap(_orig)
+    except Exception:
+        f = _orig
+    return f(msg)
