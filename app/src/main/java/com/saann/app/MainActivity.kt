@@ -38,12 +38,12 @@ import java.io.File
 class MainActivity : Activity() {
     companion object {
         @Volatile var onStatus: ((String) -> Unit)? = null
-        private const val BG = 0xFF05090F.toInt()
-        private const val PANEL = 0xFF0B1620.toInt()
+        private const val BG = 0xFF0F1114.toInt()
+        private const val PANEL = 0xFF1A1D23.toInt()
         private const val CYAN = 0xFF00E5FF.toInt()
-        private const val INK = 0xFFE8FBFF.toInt()
-        private const val DIM = 0xFF6FD6E6.toInt()
-        private const val BODY = 0xFFCFEFF7.toInt()
+        private const val INK = 0xFFF5F3EE.toInt()
+        private const val DIM = 0xFF8B93A1.toInt()
+        private const val BODY = 0xFFE4E1DA.toInt()
         private const val BAD = 0xFFFF8A80.toInt()
     }
 
@@ -167,7 +167,7 @@ class MainActivity : Activity() {
         root.addView(head)
 
         val line = View(this)
-        line.setBackgroundColor(0x4400E5FF)
+        line.setBackgroundColor(0x33FFFFFF)
         root.addView(line, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)))
         brain = BrainView(this)
         brain.visibility = View.GONE
@@ -215,7 +215,7 @@ class MainActivity : Activity() {
         val cg = GradientDrawable()
         cg.cornerRadius = dp(28).toFloat()
         cg.setColor(PANEL)
-        cg.setStroke(dp(1), 0x6600E5FF)
+        cg.setStroke(dp(1), 0x33FFFFFF)
         inCard.background = cg
         chips = LinearLayout(this)
         chips.orientation = LinearLayout.HORIZONTAL
@@ -225,7 +225,7 @@ class MainActivity : Activity() {
         inCard.addView(chipScroll, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         input = EditText(this)
         input.hint = "Message SAANN"
-        input.setHintTextColor(0x886FD6E6.toInt())
+        input.setHintTextColor(0x88A0A8B5.toInt())
         input.setTextColor(INK)
         input.textSize = 16f
         input.maxLines = 5
@@ -453,8 +453,8 @@ class MainActivity : Activity() {
         val s = dp(4).toFloat()
         val g = GradientDrawable()
         g.cornerRadii = if (mine) floatArrayOf(r, r, r, r, s, s, r, r) else floatArrayOf(r, r, r, r, r, r, s, s)
-        g.setColor(if (mine) 0x2200E5FF else PANEL)
-        g.setStroke(dp(1), if (mine) 0xCC00B8D4.toInt() else 0x5500E5FF)
+        g.setColor(if (mine) 0xFF2E6B5C.toInt() else PANEL)
+        g.setStroke(dp(1), if (mine) 0xFF3F8A77.toInt() else 0x33FFFFFF)
         tv.background = g
         val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
         lp.gravity = if (mine) Gravity.END else Gravity.START
@@ -531,7 +531,7 @@ class MainActivity : Activity() {
         val g = GradientDrawable()
         g.cornerRadius = dp(16).toFloat()
         g.setColor(PANEL)
-        g.setStroke(dp(1), 0x5500E5FF)
+        g.setStroke(dp(1), 0x33FFFFFF)
         box.background = g
         val head = TextView(this)
         head.setTextColor(DIM)
@@ -544,7 +544,7 @@ class MainActivity : Activity() {
         img.setPadding(0, dp(8), 0, dp(4))
         img.visibility = View.GONE
         val cap = TextView(this)
-        cap.setTextColor(0x996FD6E6.toInt())
+        cap.setTextColor(0x99A0A8B5.toInt())
         cap.textSize = 11f
         cap.visibility = View.GONE
         val body = LinearLayout(this)
@@ -651,7 +651,7 @@ class MainActivity : Activity() {
         val g = GradientDrawable()
         g.cornerRadius = dp(14).toFloat()
         g.setColor(PANEL)
-        g.setStroke(dp(1), 0x5500E5FF)
+        g.setStroke(dp(1), 0x33FFFFFF)
         iv.background = g
         iv.setOnClickListener { decode(f.absolutePath, 1440)?.let { big -> showFull(big) } }
         val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
@@ -708,7 +708,7 @@ class MainActivity : Activity() {
         val g = GradientDrawable()
         g.shape = GradientDrawable.OVAL
         g.setColor(PANEL)
-        g.setStroke(dp(1), 0x6600E5FF)
+        g.setStroke(dp(1), 0x33FFFFFF)
         b.background = g
         b.setOnClickListener { onClick() }
         val lp = LinearLayout.LayoutParams(dp(40), dp(40))
@@ -729,7 +729,7 @@ class MainActivity : Activity() {
             val g = GradientDrawable()
             g.cornerRadius = dp(14).toFloat()
             g.setColor(PANEL)
-            g.setStroke(dp(1), 0x6600E5FF)
+            g.setStroke(dp(1), 0x33FFFFFF)
             c.background = g
             c.setOnClickListener {
                 pending.remove(a)

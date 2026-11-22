@@ -40,9 +40,42 @@ def init(files_dir, bridge):
     agent.STEP = _step
     return "ready"
 
+FAST_OK = ("phone_battery", "phone_torch", "phone_volume_set", "phone_brightness", "phone_wifi", "phone_open_url")
+
+def _fast(msg):
+    """Answers simple things instantly, without any model: greetings, time, date, flashlight, battery ..."""
+    import random, re, time
+    t = msg.strip()
+    g = t.lower().strip(" ?.!,")
+    if re.fullmatch(r"(hi|hello|hey|yo|hiya|good (morning|afternoon|evening))( there| saann| saan)?", g):
+        return random.choice(["Hi! What can I do for you?", "Hello! I'm here.", "Hey! What do you need?"])
+    if re.fullmatch(r"(what('?s| is) )?(the )?(current )?time( is it)?( now| right now)?|what time is it( now)?|do you know what time it is", g):
+        return time.strftime("It's %I:%M %p.").replace("It's 0", "It's ")
+    if re.fullmatch(r"(what('?s| is) )?(today'?s |the )?(date|day)( is it)?( today)?|what day is (it|today)|which day is today", g):
+        return time.strftime("Today is %A, %d %B %Y.")
+    try:
+        from engine import agent
+        from core.tools import call_tool
+        q = agent.quick(t)
+        if q and q[0] in FAST_OK:
+            r = call_tool("phone-agent", q[0], **q[1])
+            if r["ok"]:
+                s = str(r["result"])
+                if q[0] == "phone_torch":
+                    return "Flashlight " + q[1]["state"] + "."
+                return s
+            return "That failed: " + str(r["error"])
+    except Exception:
+        return None
+    return None
+
 def respond(msg):
     if msg.startswith("/do "):
         return _do(msg[4:])
+    if not msg.startswith("/"):
+        fast = _fast(msg)
+        if fast is not None:
+            return fast
     import saann
     return saann.respond(msg, _state)
 

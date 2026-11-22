@@ -79,10 +79,10 @@ class IconView(ctx: Context, val kind: String, var tint: Int = 0xFF00E5FF.toInt(
 }
 
 object Ui2 {
-    private const val PANEL = 0xFF0B1620.toInt()
+    private const val PANEL = 0xFF1A1D23.toInt()
     private const val CYAN = 0xFF00E5FF.toInt()
-    private const val INK = 0xFFE8FBFF.toInt()
-    private const val DIM = 0xFF6FD6E6.toInt()
+    private const val INK = 0xFFF5F3EE.toInt()
+    private const val DIM = 0xFF8B93A1.toInt()
 
     private fun sheet(a: Activity): Pair<Dialog, LinearLayout> {
         val den = a.resources.displayMetrics.density
@@ -94,7 +94,7 @@ object Ui2 {
         val g = GradientDrawable()
         g.setColor(PANEL)
         g.cornerRadii = floatArrayOf(28 * den, 28 * den, 28 * den, 28 * den, 0f, 0f, 0f, 0f)
-        g.setStroke((1 * den).toInt(), 0x6600E5FF)
+        g.setStroke((1 * den).toInt(), 0x33FFFFFF)
         box.background = g
         val grab = View(a)
         val gg = GradientDrawable(); gg.cornerRadius = 3 * den; gg.setColor(0x556FD6E6)
@@ -116,7 +116,7 @@ object Ui2 {
         r.orientation = LinearLayout.HORIZONTAL
         r.gravity = Gravity.CENTER_VERTICAL
         r.setPadding(0, (10 * den).toInt(), 0, (10 * den).toInt())
-        r.addView(IconView(a, kind, CYAN, 0x2200E5FF), LinearLayout.LayoutParams((46 * den).toInt(), (46 * den).toInt()))
+        r.addView(IconView(a, kind, CYAN, 0x1F00E5FF), LinearLayout.LayoutParams((46 * den).toInt(), (46 * den).toInt()))
         val t = TextView(a)
         t.text = label; t.setTextColor(INK); t.textSize = 16f
         t.setPadding((16 * den).toInt(), 0, 0, 0)
@@ -166,7 +166,7 @@ object Ui2 {
         val den = a.resources.displayMetrics.density
         val bar = LinearLayout(a)
         bar.orientation = LinearLayout.HORIZONTAL
-        bar.setBackgroundColor(0xFF070D14.toInt())
+        bar.setBackgroundColor(0xFF0B0D10.toInt())
         bar.setPadding(0, (6 * den).toInt(), 0, (6 * den).toInt())
         val items = listOf(Triple("chat", "Chat", true), Triple("folder", "Projects", false), Triple("tasks", "Tasks", false), Triple("library", "Library", false))
         for ((k, n, on) in items) {
