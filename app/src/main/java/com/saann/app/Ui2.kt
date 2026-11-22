@@ -64,6 +64,11 @@ class IconView(ctx: Context, val kind: String, var tint: Int = 0xFF00E5FF.toInt(
                 val t = Path(); t.moveTo(-6 * k, -9 * k); t.lineTo(2 * k, -9 * k); t.lineTo(7 * k, -4 * k); t.lineTo(7 * k, 9 * k); t.lineTo(-6 * k, 9 * k); t.close(); c.drawPath(t, p)
                 c.drawLine(2 * k, -9 * k, 2 * k, -4 * k, p); c.drawLine(2 * k, -4 * k, 7 * k, -4 * k, p)
             }
+            "camera" -> {
+                c.drawRoundRect(RectF(-9 * k, -5 * k, 9 * k, 8 * k), 3 * k, 3 * k, p)
+                c.drawLine(-4 * k, -5 * k, -2 * k, -8 * k, p); c.drawLine(-2 * k, -8 * k, 2 * k, -8 * k, p); c.drawLine(2 * k, -8 * k, 4 * k, -5 * k, p)
+                c.drawCircle(0f, 1.5f * k, 3.5f * k, p)
+            }
             "shot" -> {
                 c.drawRoundRect(RectF(-5 * k, -9 * k, 5 * k, 9 * k), 2.5f * k, 2.5f * k, p)
                 c.drawLine(-1.5f * k, 6 * k, 1.5f * k, 6 * k, p)
@@ -120,11 +125,12 @@ object Ui2 {
         box.addView(r, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
     }
 
-    fun addSheet(a: Activity, onMedia: () -> Unit, onFile: () -> Unit, onShot: () -> Unit) {
+    fun addSheet(a: Activity, onCamera: () -> Unit, onMedia: () -> Unit, onFile: () -> Unit, onShot: () -> Unit) {
         val (d, box) = sheet(a)
         val t = TextView(a)
         t.text = "Add to chat"; t.setTextColor(DIM); t.textSize = 13f; t.letterSpacing = 0.1f
         box.addView(t)
+        row(a, box, "camera", "Camera") { d.dismiss(); onCamera() }
         row(a, box, "photo", "Photos and videos") { d.dismiss(); onMedia() }
         row(a, box, "file", "Files") { d.dismiss(); onFile() }
         row(a, box, "shot", "Screenshot of another app") { d.dismiss(); onShot() }

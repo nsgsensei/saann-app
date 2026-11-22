@@ -92,6 +92,7 @@ class MainActivity : Activity() {
     private var lastCard: Card? = null
     private val hist = JSONArray()
     private val pending = ArrayList<Attachment>()
+    private var camUri: android.net.Uri? = null
     private lateinit var chips: LinearLayout
     private val dotTask = object : Runnable {
         override fun run() {
@@ -682,7 +683,26 @@ class MainActivity : Activity() {
     }
 
     private fun attachMenu() {
-        Ui2.addSheet(this, { pickMedia() }, { pickFile() }, { shotAttach() })
+        Ui2.addSheet(this, { pickCamera() }, { pickMedia() }, { pickFile() }, { shotAttach() })
+    }
+
+    private fun pickCamera() {
+        try {
+            val v = android.content.ContentValues()
+            v.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "saann-photo-" + System.currentTimeMillis() + ".jpg")
+            v.put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            val uri = contentResolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v)
+            if (uri == null) {
+                Toast.makeText(this, "Camera storage unavailable", Toast.LENGTH_LONG).show()
+                return
+            }
+            camUri = uri
+            val i = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
+            i.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, uri)
+            startActivityForResult(i, 4419)
+        } catch (e: Exception) {
+            Toast.makeText(this, "No camera app found", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun pickMedia() {
@@ -739,6 +759,24 @@ class MainActivity : Activity() {
         if (heard != null) {
             input.setText(heard)
             if (Voice.autoSend) send.performClick()
+            return
+        }
+        if (requestCode == 4419) {
+            val cu = camUri
+            camUri = null
+            if (cu == null) return
+            if (resultCode != RESULT_OK) {
+                try { contentResolver.delete(cu, null, null) } catch (e: Exception) { }
+                return
+            }
+            Thread {
+                val a = Attach.copyIn(this, cu)
+                try { contentResolver.delete(cu, null, null) } catch (e: Exception) { }
+                runOnUiThread {
+                    if (a == null) Toast.makeText(this, "Could not read the photo", Toast.LENGTH_LONG).show()
+                    else addAttachment(a)
+                }
+            }.start()
             return
         }
         if (requestCode == 4418 && resultCode == RESULT_OK) {
