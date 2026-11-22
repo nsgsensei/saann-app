@@ -31,6 +31,13 @@ def _local(prompt, max_tokens, schema, temperature, tier="main"):
     return data["choices"][0]["message"]["content"].strip(), cfg["model"]
 
 def _cloud(prompt, max_tokens, schema, temperature):
+    try:
+        from engine import cloud
+        r = cloud.complete(prompt, max_tokens, schema, temperature, SYSTEM)
+        if r:
+            return r
+    except Exception:
+        pass
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise RuntimeError("no ANTHROPIC_API_KEY set")

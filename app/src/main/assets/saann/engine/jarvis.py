@@ -243,6 +243,9 @@ def wrap(fn):
             if text.strip().lower() == "/audit":
                 from safety.permissions import recent_audit
                 return recent_audit(10)
+            if text.strip().lower().split(" ")[0] in ("/setup", "/key", "/cloud"):
+                from engine import cloud
+                return cloud.command(text)
             if text.lstrip().startswith("/") or not cfg()["on"]:
                 return fn(msg, *a, **k)
             quick = local(text)

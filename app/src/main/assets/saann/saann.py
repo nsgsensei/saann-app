@@ -119,6 +119,9 @@ def command(line, st):
         _mind("beliefs")
     elif cmd == "/curious":
         _mind("curious")
+    elif cmd in ("/setup", "/key", "/cloud"):
+        from engine import cloud
+        print(cloud.command(line))
     else:
         print(HELP)
 
