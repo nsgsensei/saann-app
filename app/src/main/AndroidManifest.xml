@@ -11,7 +11,7 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
-    <application
+    <application android:icon="@mipmap/saann_icon" android:roundIcon="@mipmap/saann_icon"
         android:label="SAANN"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.NoActionBar">

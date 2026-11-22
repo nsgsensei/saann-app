@@ -78,3 +78,11 @@ def brain_snapshot():
         return json.dumps(brain.get().snapshot())
     except Exception:
         return "{}"
+
+
+def brain_view():
+    try:
+        from engine import brain_view as _v
+        return _v.json_text()
+    except Exception as e:
+        return '{"error": "%s"}' % str(e).replace('"', "'")

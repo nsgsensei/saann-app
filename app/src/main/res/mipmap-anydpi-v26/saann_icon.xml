@@ -1,0 +1,4 @@
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/saann_icon_bg"/>
+    <foreground android:drawable="@drawable/saann_icon_fg"/>
+</adaptive-icon>

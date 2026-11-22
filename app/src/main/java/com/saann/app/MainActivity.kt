@@ -2,7 +2,11 @@ package com.saann.app
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.Dialog
+import android.content.Intent
+import android.widget.HorizontalScrollView
+import android.widget.Toast
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -87,6 +91,8 @@ class MainActivity : Activity() {
     private var card: Card? = null
     private var lastCard: Card? = null
     private val hist = JSONArray()
+    private val pending = ArrayList<Attachment>()
+    private lateinit var chips: LinearLayout
     private val dotTask = object : Runnable {
         override fun run() {
             val t = typing ?: return
@@ -138,6 +144,14 @@ class MainActivity : Activity() {
         col.addView(title)
         col.addView(status)
         head.addView(col, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        val det = TextView(this)
+        det.text = "BRAIN ›"
+        det.setTextColor(CYAN)
+        det.textSize = 12f
+        det.letterSpacing = 0.15f
+        det.setPadding(dp(10), dp(8), dp(4), dp(8))
+        det.setOnClickListener { BrainDetail.show(this) }
+        head.addView(det)
         root.addView(head)
 
         val line = View(this)
@@ -201,7 +215,9 @@ class MainActivity : Activity() {
         ib.setColor(PANEL)
         ib.setStroke(dp(1), 0x6600E5FF)
         input.background = ib
+        bar.addView(iconBtn("+") { attachMenu() })
         bar.addView(input, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        bar.addView(iconBtn("🎤") { Voice.listen(this) })
         send = Button(this)
         send.text = "Send"
         send.setAllCaps(false)
@@ -221,6 +237,12 @@ class MainActivity : Activity() {
         val sl = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
         sl.leftMargin = dp(8)
         bar.addView(send, sl)
+        chips = LinearLayout(this)
+        chips.orientation = LinearLayout.HORIZONTAL
+        chips.setPadding(dp(12), 0, dp(12), 0)
+        val chipScroll = HorizontalScrollView(this)
+        chipScroll.addView(chips)
+        root.addView(chipScroll, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(bar)
         setContentView(root)
 
@@ -256,14 +278,29 @@ class MainActivity : Activity() {
         }.start()
 
         send.setOnClickListener {
-            val t = input.text.toString().trim()
-            if (t.isEmpty() || !ready || busy) return@setOnClickListener
+            val t0 = input.text.toString().trim()
+            if ((t0.isEmpty() && pending.isEmpty()) || !ready || busy) return@setOnClickListener
+            if (pending.any { !it.ready }) {
+                Toast.makeText(this, "Still reading the attachment...", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val t = if (pending.isEmpty()) t0 else Attach.compose(t0, pending)
+            val shown = if (pending.isEmpty()) t0 else (if (t0.isEmpty()) "" else t0 + "\n") + "📎 " + pending.joinToString(", ") { it.name }
+            pending.clear()
+            refreshChips()
             input.setText("")
+            if (t.startsWith("/voice")) {
+                val on = t.contains("on")
+                Voice.enableSpeech(this, on)
+                addMsg(t, true, false)
+                addMsg(if (on) "Voice replies on." else "Voice replies off.", false, false)
+                return@setOnClickListener
+            }
             if (t == "/clear") {
                 clearChat()
                 return@setOnClickListener
             }
-            addMsg(t, true)
+            addMsg(shown, true)
             if (t.startsWith("/bar")) {
                 addMsg(BarPrefs.command(this, t), false, false)
                 return@setOnClickListener
@@ -277,6 +314,7 @@ class MainActivity : Activity() {
                     hideTyping()
                     finishCard()
                     addMsg(r, false)
+                    Voice.speak(r)
                     setBusy(false)
                     setStatus("Ready")
                 }
@@ -565,6 +603,118 @@ class MainActivity : Activity() {
         iv.setOnClickListener { d.dismiss() }
         d.setContentView(iv)
         d.show()
+    }
+
+    private fun iconBtn(label: String, onClick: () -> Unit): TextView {
+        val b = TextView(this)
+        b.text = label
+        b.gravity = Gravity.CENTER
+        b.textSize = 18f
+        b.setTextColor(CYAN)
+        val g = GradientDrawable()
+        g.shape = GradientDrawable.OVAL
+        g.setColor(PANEL)
+        g.setStroke(dp(1), 0x6600E5FF)
+        b.background = g
+        b.setOnClickListener { onClick() }
+        val lp = LinearLayout.LayoutParams(dp(40), dp(40))
+        lp.leftMargin = dp(4)
+        lp.rightMargin = dp(4)
+        b.layoutParams = lp
+        return b
+    }
+
+    private fun refreshChips() {
+        chips.removeAllViews()
+        for (a in pending.toList()) {
+            val c = TextView(this)
+            c.text = (if (a.ready) "📎 " else "… ") + a.name.take(22) + "  ✕"
+            c.setTextColor(BODY)
+            c.textSize = 12f
+            c.setPadding(dp(12), dp(6), dp(12), dp(6))
+            val g = GradientDrawable()
+            g.cornerRadius = dp(14).toFloat()
+            g.setColor(PANEL)
+            g.setStroke(dp(1), 0x6600E5FF)
+            c.background = g
+            c.setOnClickListener {
+                pending.remove(a)
+                refreshChips()
+            }
+            val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
+            lp.rightMargin = dp(6)
+            lp.topMargin = dp(4)
+            chips.addView(c, lp)
+        }
+    }
+
+    private fun addAttachment(a: Attachment) {
+        pending.add(a)
+        refreshChips()
+        Thread {
+            Attach.process(a)
+            runOnUiThread { refreshChips() }
+        }.start()
+    }
+
+    private fun attachMenu() {
+        AlertDialog.Builder(this)
+            .setItems(arrayOf("Screenshot of another app (3 s)", "Photo or file")) { _, w ->
+                if (w == 0) shotAttach() else pickFile()
+            }.show()
+    }
+
+    private fun shotAttach() {
+        val s = SaannAccessibility.instance
+        if (s == null) {
+            Toast.makeText(this, "Turn SAANN on in Settings > Accessibility first", Toast.LENGTH_LONG).show()
+            return
+        }
+        Toast.makeText(this, "Switch to the screen you want. Capturing in 3 s...", Toast.LENGTH_LONG).show()
+        moveTaskToBack(true)
+        Thread {
+            try {
+                Thread.sleep(3000)
+                val a = Attachment("screenshot.jpg", s.saveShot(s.captureClean()), "image")
+                runOnUiThread {
+                    try {
+                        startActivity(Intent(this, MainActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                    } catch (e: Exception) {
+                    }
+                    addAttachment(a)
+                }
+            } catch (e: Throwable) {
+                runOnUiThread { Toast.makeText(this, e.message ?: "screenshot failed", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
+    private fun pickFile() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT)
+        i.addCategory(Intent.CATEGORY_OPENABLE)
+        i.type = "*/*"
+        startActivityForResult(i, 4418)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val heard = Voice.result(requestCode, resultCode, data)
+        if (heard != null) {
+            input.setText(heard)
+            if (Voice.autoSend) send.performClick()
+            return
+        }
+        if (requestCode == 4418 && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            Thread {
+                val a = Attach.copyIn(this, uri)
+                runOnUiThread {
+                    if (a == null) Toast.makeText(this, "Could not add that file (20 MB max)", Toast.LENGTH_LONG).show()
+                    else addAttachment(a)
+                }
+            }.start()
+        }
     }
 
     private fun copyDir(assetPath: String, dest: File, rel: String) {
