@@ -94,6 +94,7 @@ class MainActivity : Activity() {
     private val pending = ArrayList<Attachment>()
     private var camUri: android.net.Uri? = null
     private lateinit var chips: LinearLayout
+    private var agentTv: TextView? = null
     private val dotTask = object : Runnable {
         override fun run() {
             val t = typing ?: return
@@ -152,6 +153,16 @@ class MainActivity : Activity() {
         det.letterSpacing = 0.15f
         det.setPadding(dp(10), dp(8), dp(4), dp(8))
         det.setOnClickListener { BrainDetail.show(this) }
+        val ag = TextView(this)
+        ag.text = agentLabel()
+        ag.setTextColor(CYAN)
+        ag.textSize = 12f
+        ag.maxLines = 1
+        ag.letterSpacing = 0.15f
+        ag.setPadding(dp(8), dp(8), dp(4), dp(8))
+        ag.setOnClickListener { cycleAgent() }
+        agentTv = ag
+        head.addView(ag)
         head.addView(det)
         root.addView(head)
 
@@ -297,6 +308,12 @@ class MainActivity : Activity() {
                 addMsg(if (on) "Voice replies on." else "Voice replies off.", false, false)
                 return@setOnClickListener
             }
+            if (t.startsWith("/bg ")) {
+                addMsg(t, true)
+                AgentService.run(this, t.drop(4).trim())
+                addMsg("On it in the background. I'll notify you when it's done.", false, false)
+                return@setOnClickListener
+            }
             if (t == "/clear") {
                 clearChat()
                 return@setOnClickListener
@@ -316,12 +333,53 @@ class MainActivity : Activity() {
                     finishCard()
                     addMsg(r, false)
                     VoiceWindow.onReply(r)
+                    AgentService.notifyIfAway(this, r)
                     Voice.speak(r)
                     setBusy(false)
                     setStatus("Ready")
                 }
             }
         }
+    }
+
+    private fun agentLabel(): String =
+        if (!AgentService.running) "AGENT OFF" else if (AgentService.listening) "AGENT LIVE" else "AGENT ON"
+
+    private fun cycleAgent() {
+        if (!AgentService.running) {
+            AgentService.start(this, false)
+        } else if (!AgentService.listening) {
+            if (Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 8)
+                return
+            }
+            AgentService.start(this, true)
+        } else {
+            AgentService.stop(this)
+        }
+        ui.postDelayed({ agentTv?.text = agentLabel() }, 700)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        AgentService.appVisible = true
+        AgentService.onReply = { q, r ->
+            runOnUiThread {
+                if (q.isNotEmpty()) addMsg(q, true)
+                addMsg(r, false)
+            }
+        }
+        agentTv?.text = agentLabel()
+        for (m in AgentService.drain()) {
+            if (m.first.isNotEmpty()) addMsg(m.first, true)
+            addMsg(m.second, false)
+        }
+    }
+
+    override fun onPause() {
+        AgentService.appVisible = false
+        super.onPause()
     }
 
     override fun onDestroy() {
@@ -626,6 +684,8 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 8 && grantResults.isNotEmpty() &&
+            grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) AgentService.start(this, true)
         if (requestCode == 7 && grantResults.isNotEmpty() &&
             grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) startVoice()
     }
