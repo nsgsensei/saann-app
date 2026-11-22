@@ -626,6 +626,11 @@ def command(msg):
         return _cx_resize(low[11:].strip())
     if low == "/brain cortex":
         return _cx_status()
+    if low.startswith("/brain motor"):
+        return _motor_cmd(m[12:])
+    if low.startswith("/servers"):
+        from engine import servers
+        return servers.command(low[8:])
     if low == "/brain demo":
         return demo()
     return None
@@ -688,10 +693,7 @@ def _listen(b, text):
             enc = b.regions["language"].encode(t)
             qe = b.regions["language"].encode(q) if q else None
             sim = float(enc @ qe) if enc is not None and qe is not None else 0.0
-            if sim >= 0.75:
-                _nudge(b, last, bad=0.5)
-            elif time.time() - last.get("ts", 0) < 300:
-                _nudge(b, last, good=0.2)
+            # learning is verified-only: no reward or penalty from silence or re-asking
             last["rated"] = True
         return None
 
@@ -1097,6 +1099,32 @@ def _cx_status():
         s["size"], s["networks"], format(s["parameters"], ","),
         ", ".join("%s %d" % kv for kv in s["seen"].items()) or "nothing yet",
         ", ".join("%s %.3f" % kv for kv in s["loss"].items()) or "n/a")
+
+
+def _motor_get():
+    from engine import motor as _m
+    return _m.get()
+
+def _motor_cmd(rest):
+    mo = _motor_get()
+    r = rest.strip()
+    low = r.lower()
+    if not r:
+        s = mo.stats()
+        return "motor cortex: %d intents, %d neurons, %s parameters, %d taught examples\nTry: /brain motor set a timer for 5 minutes" % (
+            s["intents"], s["neurons"], format(s["parameters"], ","), s["taught"])
+    if low in ("good", "bad"):
+        return "Okay, learned from that." if mo.reinforce(low == "good") else "Nothing to rate yet."
+    if low.startswith("teach ") and "=>" in r:
+        lab, _, txt = r[6:].partition("=>")
+        res = mo.learn(txt.strip(), lab.strip())
+        mo.save()
+        return "Learned: \"%s\" now means %s (%.2f)" % (txt.strip()[:40], res[0], res[1]) if res else "usage: /brain motor teach intent => example phrase"
+    return mo.explain(mo.analyze(r))
+
+plan = _safe(lambda msg: _motor_get().analyze(msg))
+plan_feedback = _safe(lambda ok: _motor_get().reinforce(ok))
+plan_teach = _safe(lambda text, label: (_motor_get().learn(text, label), _motor_get().save()))
 
 def _tone(f, secs=0.5, sr=16000):
     t = np.arange(int(sr * secs)) / sr

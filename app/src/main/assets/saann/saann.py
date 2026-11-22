@@ -54,7 +54,19 @@ def _respond_core(msg, st):
     if note is not None:
         return note
     brain.think_text(msg)
-    r = route(msg, st)
+    r = None
+    try:
+        pl = brain.plan(msg)
+        if pl and not st.text:
+            stp = pl["steps"]
+            if pl["act"] and not any(s["sensitive"] for s in stp):
+                r = "phone"
+            elif len(stp) == 1 and stp[0]["intent"] == "chat" and stp[0]["conf"] >= 0.9:
+                r = "chat"
+    except Exception:
+        r = None
+    if r is None:
+        r = route(msg, st)
     log_event("router", "route", input=msg[:200], output=r)
     if r == "phone":
         return agent.run(msg)["answer"]

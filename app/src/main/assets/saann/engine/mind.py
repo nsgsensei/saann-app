@@ -341,7 +341,15 @@ def _brain_ctx(message):
     except Exception:
         return ""
 
+def _ensure_servers():
+    try:
+        from engine import servers
+        servers.ensure()
+    except Exception:
+        pass
+
 def chat(message, ask_fn=None):
+    _ensure_servers()
     from core import gateway
     ask_fn = ask_fn or gateway.ask
     known = _known(message)
