@@ -285,11 +285,8 @@ object Onboarding {
                     }
 
                     button("Skip this service") {
-                        // Clear this wizard's credential for a skipped service.
-                        Keys.set(a, "${provider}_key", "")
-                        if (provider == "cloudflare") {
-                            Keys.set(a, "cloudflare_account_key", "")
-                        }
+                        // Preserve drafts; skipping is not credential removal.
+                        saveDraft()
                         page++
                         render()
                     }
