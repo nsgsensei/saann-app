@@ -112,10 +112,23 @@ object VoiceWindow {
     private var send: ((String) -> Boolean)? = null
     private var live = false
     private var waiting = false
+    private var retries = 0
+    private var turn = 0
     val isOpen: Boolean get() = live
 
+    fun dismiss() {
+        try { dlg?.dismiss() } catch (e: Exception) { }
+        close()
+    }
+
     fun show(a: Activity, onText: (String) -> Boolean) {
-        if (live) return
+        if (live) {
+            if (dlg?.isShowing == true && act === a) return
+            try { dlg?.dismiss() } catch (e: Exception) { }
+            close()
+        }
+        retries = 0
+        AgentService.pauseListening()
         act = a
         send = onText
         live = true
@@ -201,7 +214,8 @@ object VoiceWindow {
             Voice.stopSpeak()
             waiting = false
             listen()
-        } else if (m == 0) {
+        } else if (m == 0 || m == 1) {
+            waiting = false
             listen()
         }
     }
@@ -231,6 +245,7 @@ object VoiceWindow {
             }
             override fun onResults(b: Bundle?) {
                 orb?.level = 0f
+                retries = 0
                 val t = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
                 if (!live) return
                 if (t.isNullOrBlank()) {
@@ -242,6 +257,11 @@ object VoiceWindow {
             override fun onError(e: Int) {
                 orb?.level = 0f
                 if (!live) return
+                if (retries < 3 && (e == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || e == SpeechRecognizer.ERROR_CLIENT)) {
+                    retries++
+                    ui.postDelayed({ if (live && orb?.mode == 0) listen() }, 900)
+                    return
+                }
                 setMode(0, "Tap the orb to talk")
                 sub?.text = when (e) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I didn't catch that."
@@ -263,6 +283,14 @@ object VoiceWindow {
         if (ok) {
             waiting = true
             setMode(1, "Thinking")
+            val tok = ++turn
+            ui.postDelayed({
+                if (live && waiting && turn == tok) {
+                    waiting = false
+                    setMode(0, "Tap the orb to talk")
+                    sub?.text = "That took too long."
+                }
+            }, 150000)
         } else {
             setMode(0, "One moment")
             ui.postDelayed({ listen() }, 1500)

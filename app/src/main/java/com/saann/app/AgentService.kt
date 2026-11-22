@@ -29,6 +29,12 @@ class AgentService : Service() {
         @Volatile var onReply: ((String, String) -> Unit)? = null
         private val inbox = CopyOnWriteArrayList<Pair<String, String>>()
         private var seq = 200
+        @Volatile private var inst: AgentService? = null
+
+        fun pauseListening() {
+            val i = inst ?: return
+            i.ui.post { i.cancelRec() }
+        }
 
         fun drain(): List<Pair<String, String>> {
             val l = inbox.toList()
@@ -96,6 +102,16 @@ class AgentService : Service() {
     override fun onCreate() {
         super.onCreate()
         running = true
+        inst = this
+    }
+
+    fun cancelRec() {
+        try { rec?.destroy() } catch (e: Exception) { }
+        rec = null
+        if (looping && listenOn) {
+            ui.removeCallbacks(tick)
+            ui.postDelayed(tick, 1500)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -234,6 +250,7 @@ class AgentService : Service() {
 
     override fun onDestroy() {
         running = false
+        inst = null
         listening = false
         stopRec()
         Voice.stopSpeak()

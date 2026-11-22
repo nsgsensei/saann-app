@@ -8,17 +8,29 @@ object Host {
     fun respond(text: String, done: (String) -> Unit) {
         Thread {
             val p = py
-            val r = if (p == null) {
-                "SAANN is still starting. Open the app once first."
+            var r: String
+            if (p == null) {
+                r = "SAANN is still starting. Open the app once first."
             } else {
-                try {
-                    p.callAttr("respond", text).toString()
-                } catch (e: Throwable) {
-                    "error: " + (e.message ?: e.toString())
+                var tried = false
+                if (!ServerGuard.mainUp()) {
+                    tried = true
+                    ServerGuard.ensure(90) { s -> ServerGuard.onStatus?.invoke(s) }
+                }
+                r = call(p, text)
+                if (!tried && ServerGuard.looksDown(r)) {
+                    ServerGuard.onStatus?.invoke("Starting models...")
+                    if (ServerGuard.ensure(90) { s -> ServerGuard.onStatus?.invoke(s) }) r = call(p, text)
                 }
             }
             done(r)
         }.start()
+    }
+
+    private fun call(p: PyObject, text: String): String = try {
+        p.callAttr("respond", text).toString()
+    } catch (e: Throwable) {
+        "error: " + (e.message ?: e.toString())
     }
 
     fun snapshot(): String = try {

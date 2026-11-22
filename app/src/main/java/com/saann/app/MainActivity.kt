@@ -260,8 +260,14 @@ class MainActivity : Activity() {
 
         loadHistory()
         if (Build.VERSION.SDK_INT >= 33) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS, ServerGuard.RUN), 1)
+        } else if (Build.VERSION.SDK_INT >= 23 &&
+            checkSelfPermission(ServerGuard.RUN) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(ServerGuard.RUN), 9)
         }
+        ServerGuard.init(this)
+        ServerGuard.onStatus = { s -> runOnUiThread { setStatus(s) } }
+        ServerGuard.kick()
         onStatus = { s -> runOnUiThread { setStatus(s); brain.pulse(s) } }
         Live.onStep = { phase, tool, args, ok, res ->
             runOnUiThread { handleStep(phase, tool, args, ok, res) }
@@ -378,11 +384,13 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        VoiceWindow.dismiss()
         AgentService.appVisible = false
         super.onPause()
     }
 
     override fun onDestroy() {
+        VoiceWindow.dismiss()
         onStatus = null
         Live.onStep = null
         Preview.listener = null
@@ -684,6 +692,7 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1 || requestCode == 9) ServerGuard.kick()
         if (requestCode == 8 && grantResults.isNotEmpty() &&
             grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) AgentService.start(this, true)
         if (requestCode == 7 && grantResults.isNotEmpty() &&
