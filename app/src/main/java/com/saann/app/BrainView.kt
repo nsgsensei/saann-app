@@ -6,32 +6,60 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.Shader
+import android.graphics.Typeface
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.view.MotionEvent
 import android.view.View
+import java.util.Random
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
-import java.util.Random
 
 class BrainView(context: Context) : View(context), SensorEventListener {
 
-    private class Node(val x: Float, val y: Float, val z: Float, val layer: Int)
+    private enum class Region(val label: String) {
+        LANGUAGE("LANGUAGE"),
+        VISION("VISION"),
+        SENSES("SENSES"),
+        CEREBELLUM("CEREBELLUM"),
+        MOTOR("MOTOR CORTEX"),
+        MEMORY("MEMORY"),
+        ATTENTION("ATTENTION")
+    }
 
-    private class Link(val a: Int, val b: Int)
+    private class Node(
+        val x: Float,
+        val y: Float,
+        val z: Float,
+        val region: Region
+    )
 
-    private class Pulse(val link: Int, var t: Float, val speed: Float, val color: Int)
+    private class Link(
+        val a: Int,
+        val b: Int,
+        val association: Boolean
+    )
+
+    private class Pulse(
+        val link: Int,
+        var t: Float,
+        val speed: Float,
+        val color: Int
+    )
 
     private val random = Random(2026L)
     private val nodes = ArrayList<Node>()
     private val links = ArrayList<Link>()
     private val pulses = ArrayList<Pulse>()
+
+    private val activation = HashMap<Region, Float>()
+    private val targetActivation = HashMap<Region, Float>()
 
     private var yaw = 0.55f
     private var pitch = 0.22f
@@ -52,6 +80,7 @@ class BrainView(context: Context) : View(context), SensorEventListener {
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val linkPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private val sensorManager =
         context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
@@ -65,46 +94,108 @@ class BrainView(context: Context) : View(context), SensorEventListener {
     }
 
     init {
-        buildNetwork()
+        buildBrain()
+
         linkPaint.style = Paint.Style.STROKE
         linkPaint.strokeCap = Paint.Cap.ROUND
         pulsePaint.style = Paint.Style.FILL
         glowPaint.style = Paint.Style.FILL
         nodePaint.style = Paint.Style.FILL
+
+        labelPaint.textAlign = Paint.Align.CENTER
+        labelPaint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        labelPaint.color = Color.argb(215, 225, 245, 255)
+
+        for (region in Region.values()) {
+            activation[region] = 0.20f
+            targetActivation[region] = 0.20f
+        }
     }
 
-    private fun buildNetwork() {
-        val layers = intArrayOf(10, 18, 18, 12, 6)
-        val first = ArrayList<Int>()
+    private fun buildBrain() {
+        val centers = HashMap<Region, FloatArray>()
 
-        for (layer in layers.indices) {
-            val count = layers[layer]
+        centers[Region.LANGUAGE] = floatArrayOf(0.92f, 0.38f, 0.10f)
+        centers[Region.VISION] = floatArrayOf(-0.92f, 0.48f, -0.18f)
+        centers[Region.SENSES] = floatArrayOf(0.02f, 0.82f, -0.62f)
+        centers[Region.CEREBELLUM] = floatArrayOf(0.02f, -0.88f, -0.38f)
+        centers[Region.MOTOR] = floatArrayOf(0.78f, -0.48f, 0.38f)
+        centers[Region.MEMORY] = floatArrayOf(-0.78f, -0.38f, 0.38f)
+        centers[Region.ATTENTION] = floatArrayOf(0.02f, 0.06f, 0.78f)
+
+        val regionNodes = HashMap<Region, ArrayList<Int>>()
+
+        for (region in Region.values()) {
+            val center = centers[region] ?: floatArrayOf(0f, 0f, 0f)
             val ids = ArrayList<Int>()
 
-            for (i in 0 until count) {
-                val angle = (i.toFloat() / count) * 6.2831853f
-                val spread = 0.62f + layer * 0.045f
-                val radius = 0.42f + 0.16f * sin(angle * 2.3f + layer)
-                val x = (layer - (layers.size - 1) / 2f) * 0.42f
-                val y = cos(angle) * radius * spread
-                val z = sin(angle) * radius * spread
-                nodes.add(Node(x, y, z, layer))
+            for (i in 0 until 8) {
+                val angle = (i.toFloat() / 8f) * 6.2831853f
+                val radius = 0.17f + 0.05f * sin(angle * 2.7f + region.ordinal)
+
+                val x = center[0] + cos(angle) * radius
+                val y = center[1] + sin(angle) * radius * 0.85f
+                val z = center[2] + sin(angle * 1.7f) * radius * 0.75f
+
+                nodes.add(Node(x, y, z, region))
                 ids.add(nodes.size - 1)
             }
 
-            if (layer > 0) {
-                val previous = first
-                for (id in ids) {
-                    val connections = 2 + random.nextInt(3)
-                    for (k in 0 until connections) {
-                        val target = previous[random.nextInt(previous.size)]
-                        links.add(Link(target, id))
-                    }
+            regionNodes[region] = ids
+
+            for (i in ids.indices) {
+                val a = ids[i]
+                val b = ids[(i + 1) % ids.size]
+                links.add(Link(a, b, false))
+
+                if (i % 2 == 0) {
+                    val c = ids[(i + 3) % ids.size]
+                    links.add(Link(a, c, false))
                 }
             }
+        }
 
-            first.clear()
-            first.addAll(ids)
+        val attention = regionNodes[Region.ATTENTION] ?: ArrayList()
+
+        for (region in Region.values()) {
+            if (region == Region.ATTENTION) continue
+            val ids = regionNodes[region] ?: continue
+
+            for (k in 0 until 3) {
+                val a = attention[random.nextInt(attention.size)]
+                val b = ids[random.nextInt(ids.size)]
+                links.add(Link(a, b, true))
+            }
+        }
+
+        val associations = arrayOf(
+            Region.LANGUAGE to Region.MEMORY,
+            Region.LANGUAGE to Region.ATTENTION,
+            Region.VISION to Region.MEMORY,
+            Region.VISION to Region.ATTENTION,
+            Region.SENSES to Region.CEREBELLUM,
+            Region.SENSES to Region.ATTENTION,
+            Region.CEREBELLUM to Region.MOTOR,
+            Region.MOTOR to Region.ATTENTION,
+            Region.MEMORY to Region.ATTENTION,
+            Region.LANGUAGE to Region.SENSES,
+            Region.VISION to Region.LANGUAGE,
+            Region.MOTOR to Region.MEMORY
+        )
+
+        for (pair in associations) {
+            val a = regionNodes[pair.first] ?: continue
+            val b = regionNodes[pair.second] ?: continue
+
+            for (k in 0 until 3) {
+                links.add(
+                    Link(
+                        a[random.nextInt(a.size)],
+                        b[random.nextInt(b.size)],
+                        true
+                    )
+                )
+            }
         }
     }
 
@@ -122,25 +213,110 @@ class BrainView(context: Context) : View(context), SensorEventListener {
     }
 
     fun pulse(text: String) {
-        activity = min(1.35f, activity + 0.42f)
+        val message = text.lowercase()
+        val active = HashSet<Region>()
 
-        val seed = abs(text.hashCode())
-        val hue = (seed % 360) / 360f
-        val color = Color.HSVToColor(
-            floatArrayOf(hue * 360f, 0.72f, 1f)
-        )
+        active.add(Region.ATTENTION)
 
-        val count = 7 + (seed % 9)
+        if (containsAny(
+                message,
+                "language", "text", "word", "say", "speak", "chat",
+                "reply", "grammar", "translate", "write", "read", "ask"
+            )
+        ) {
+            active.add(Region.LANGUAGE)
+        }
+
+        if (containsAny(
+                message,
+                "image", "photo", "camera", "see", "visual", "picture",
+                "scan", "look", "vision", "color"
+            )
+        ) {
+            active.add(Region.VISION)
+        }
+
+        if (containsAny(
+                message,
+                "sensor", "touch", "hear", "sound", "audio", "mic",
+                "voice", "feel", "sense", "listen"
+            )
+        ) {
+            active.add(Region.SENSES)
+        }
+
+        if (containsAny(
+                message,
+                "balance", "motion", "coordination", "timing", "rhythm",
+                "movement", "posture"
+            )
+        ) {
+            active.add(Region.CEREBELLUM)
+        }
+
+        if (containsAny(
+                message,
+                "move", "action", "motor", "gesture", "control",
+                "drive", "run", "click", "press"
+            )
+        ) {
+            active.add(Region.MOTOR)
+        }
+
+        if (containsAny(
+                message,
+                "remember", "memory", "history", "store", "recall",
+                "context", "previous", "earlier", "save"
+            )
+        ) {
+            active.add(Region.MEMORY)
+        }
+
+        if (active.size == 1) {
+            active.add(Region.LANGUAGE)
+        }
+
+        activity = min(1.45f, activity + 0.45f)
+
+        for (region in Region.values()) {
+            if (active.contains(region)) {
+                targetActivation[region] = 1.35f
+            } else {
+                targetActivation[region] = 0.20f
+            }
+        }
+
+        val count = 9 + (abs(text.hashCode()) % 10)
+
         for (i in 0 until count) {
             if (links.isEmpty()) break
             pulses.add(
                 Pulse(
                     random.nextInt(links.size),
                     random.nextFloat() * 0.25f,
-                    0.010f + random.nextFloat() * 0.018f,
-                    color
+                    0.011f + random.nextFloat() * 0.019f,
+                    regionColor(active.random())
                 )
             )
+        }
+    }
+
+    private fun containsAny(text: String, vararg words: String): Boolean {
+        for (word in words) {
+            if (text.contains(word)) return true
+        }
+        return false
+    }
+
+    private fun regionColor(region: Region): Int {
+        return when (region) {
+            Region.LANGUAGE -> Color.rgb(95, 205, 255)
+            Region.VISION -> Color.rgb(135, 255, 190)
+            Region.SENSES -> Color.rgb(255, 205, 105)
+            Region.CEREBELLUM -> Color.rgb(175, 150, 255)
+            Region.MOTOR -> Color.rgb(255, 120, 150)
+            Region.MEMORY -> Color.rgb(255, 175, 95)
+            Region.ATTENTION -> Color.rgb(235, 235, 255)
         }
     }
 
@@ -240,6 +416,12 @@ class BrainView(context: Context) : View(context), SensorEventListener {
 
         activity = max(0.34f, activity * 0.988f)
 
+        for (region in Region.values()) {
+            val current = activation[region] ?: 0.20f
+            val target = targetActivation[region] ?: 0.20f
+            activation[region] = current + (target - current) * 0.055f
+        }
+
         val iterator = pulses.iterator()
         while (iterator.hasNext()) {
             val pulse = iterator.next()
@@ -248,18 +430,22 @@ class BrainView(context: Context) : View(context), SensorEventListener {
         }
 
         if (activity > 0.30f && random.nextFloat() < activity * 0.34f && links.isNotEmpty()) {
+            val link = links[random.nextInt(links.size)]
+            val regionA = nodes[link.a].region
+            val regionB = nodes[link.b].region
+
             pulses.add(
                 Pulse(
-                    random.nextInt(links.size),
+                    links.indexOf(link),
                     0f,
                     0.012f + random.nextFloat() * 0.016f,
-                    Color.HSVToColor(
-                        floatArrayOf(
-                            (time * 22f + random.nextInt(70)) % 360f,
-                            0.68f,
-                            1f
+                    if (link.association) {
+                        Color.rgb(240, 240, 255)
+                    } else {
+                        regionColor(
+                            if (random.nextBoolean()) regionA else regionB
                         )
-                    )
+                    }
                 )
             )
         }
@@ -310,21 +496,42 @@ class BrainView(context: Context) : View(context), SensorEventListener {
         }
 
         val breath = 0.5f + 0.5f * sin(time * 1.7f)
-        val energy = 0.16f + activity * 0.84f
+        val energy = 0.20f + activity * 0.80f
 
         for (i in links.indices) {
             val link = links[i]
             val a = projected[link.a]
             val b = projected[link.b]
 
+            val regionA = nodes[link.a].region
+            val regionB = nodes[link.b].region
+
+            val regionEnergy = max(
+                activation[regionA] ?: 0.20f,
+                activation[regionB] ?: 0.20f
+            )
+
             val depth = (a[2] + b[2]) * 0.5f
             val near = (1f - (depth + 1.1f) / 2.2f).coerceIn(0.10f, 1f)
 
-            val alpha = (18f + 62f * energy * near + 24f * breath).toInt()
-                .coerceIn(0, 190)
+            val alpha = (20f + 74f * energy * near + 30f * breath +
+                65f * regionEnergy * near).toInt().coerceIn(0, 215)
 
-            linkPaint.color = Color.argb(alpha, 90, 190, 255)
-            linkPaint.strokeWidth = 1.4f + 2.3f * energy * near
+            val color = if (link.association) {
+                Color.argb(alpha, 225, 225, 255)
+            } else {
+                val base = regionColor(regionA)
+                Color.argb(
+                    alpha,
+                    Color.red(base),
+                    Color.green(base),
+                    Color.blue(base)
+                )
+            }
+
+            linkPaint.color = color
+            linkPaint.strokeWidth = 1.4f + 2.3f * energy * near +
+                2.1f * regionEnergy * near
             canvas.drawLine(a[0], a[1], b[0], b[1], linkPaint)
         }
 
@@ -340,7 +547,7 @@ class BrainView(context: Context) : View(context), SensorEventListener {
             val radius = 2.7f + 5.8f * fade * (0.65f + activity)
 
             pulsePaint.color = pulse.color
-            pulsePaint.alpha = (55f + 180f * fade * (0.45f + activity)).toInt()
+            pulsePaint.alpha = (55f + 185f * fade * (0.45f + activity)).toInt()
                 .coerceIn(0, 255)
             canvas.drawCircle(x, y, radius, pulsePaint)
         }
@@ -350,32 +557,74 @@ class BrainView(context: Context) : View(context), SensorEventListener {
             val point = projected[i]
             val depth = point[2]
             val near = (1f - (depth + 1.1f) / 2.2f).coerceIn(0.12f, 1f)
+            val regionEnergy = activation[node.region] ?: 0.20f
 
             val wave = 0.5f + 0.5f * sin(
-                time * 2.1f + node.layer * 0.55f + i * 0.22f
+                time * 2.1f + node.region.ordinal * 0.55f + i * 0.22f
             )
 
             val radius = (2.4f + 4.0f * near) *
-                (0.92f + 0.28f * wave + 0.55f * activity)
+                (0.92f + 0.28f * wave + 0.55f * activity) *
+                (0.80f + 0.55f * regionEnergy)
 
-            val hue = 190f + node.layer * 16f + wave * 22f
-            val color = Color.HSVToColor(
-                floatArrayOf(hue % 360f, 0.72f, 1f)
-            )
+            val color = regionColor(node.region)
 
             glowPaint.shader = RadialGradient(
                 point[0],
                 point[1],
                 radius * 3.4f,
-                Color.argb((90f * near * energy).toInt(), 120, 220, 255),
-                Color.argb(0, 120, 220, 255),
+                Color.argb(
+                    (105f * near * energy * regionEnergy).toInt().coerceIn(0, 255),
+                    Color.red(color),
+                    Color.green(color),
+                    Color.blue(color)
+                ),
+                Color.argb(0, Color.red(color), Color.green(color), Color.blue(color)),
                 Shader.TileMode.CLAMP
             )
             canvas.drawCircle(point[0], point[1], radius * 3.4f, glowPaint)
 
             nodePaint.color = color
-            nodePaint.alpha = (95f + 145f * near * energy).toInt().coerceIn(0, 255)
+            nodePaint.alpha = (95f + 145f * near * energy * regionEnergy)
+                .toInt().coerceIn(0, 255)
             canvas.drawCircle(point[0], point[1], radius, nodePaint)
+        }
+
+        val density = resources.displayMetrics.density
+        labelPaint.textSize = 10.5f * density
+
+        for (region in Region.values()) {
+            var sumX = 0f
+            var sumY = 0f
+            var sumZ = 0f
+            var count = 0
+
+            for (i in nodes.indices) {
+                if (nodes[i].region != region) continue
+                sumX += projected[i][0]
+                sumY += projected[i][1]
+                sumZ += projected[i][2]
+                count++
+            }
+
+            if (count == 0) continue
+
+            val x = sumX / count
+            val y = sumY / count
+            val z = sumZ / count
+
+            val near = (1f - (z + 1.1f) / 2.2f).coerceIn(0.18f, 1f)
+            val regionEnergy = activation[region] ?: 0.20f
+
+            labelPaint.alpha = (55f + 175f * near * (0.45f + regionEnergy))
+                .toInt().coerceIn(0, 255)
+
+            canvas.drawText(
+                region.label,
+                x,
+                y - 14f * density * (0.75f + regionEnergy * 0.55f),
+                labelPaint
+            )
         }
     }
 }
