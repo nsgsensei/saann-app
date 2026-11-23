@@ -142,7 +142,7 @@ def test(name):
             candidates.insert(0, previous)
 
         errors = []
-        for model in candidates[:3]:
+        for model in candidates[:8]:
             try:
                 state = cloud.state()
                 state["models"][name] = model
@@ -170,7 +170,7 @@ def test(name):
             except Exception as exc:
                 errors.append(model + ": " + _error(exc))
                 if isinstance(exc, urllib.error.HTTPError):
-                    if exc.code in (401, 403, 429):
+                    if exc.code in (401, 403):
                         break
 
         state = cloud.state()
