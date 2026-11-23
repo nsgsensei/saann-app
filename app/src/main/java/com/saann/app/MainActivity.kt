@@ -38,9 +38,9 @@ import java.io.File
 class MainActivity : Activity() {
     companion object {
         @Volatile var onStatus: ((String) -> Unit)? = null
-        private const val BG = 0xFF080808.toInt()
-        private const val PANEL = 0xFF151515.toInt()
-        private const val CYAN = 0xFFFF7A18.toInt()
+        private const val BG = 0xFF050505.toInt()
+        private const val PANEL = 0xFF101010.toInt()
+        private const val CYAN = 0xFFE5484D.toInt()
         private const val INK = 0xFFFAF7F2.toInt()
         private const val DIM = 0xFFB8ADA5.toInt()
         private const val BODY = 0xFFEDE6DF.toInt()
@@ -94,7 +94,7 @@ class MainActivity : Activity() {
     private val pending = ArrayList<Attachment>()
     private var camUri: android.net.Uri? = null
     private lateinit var chips: LinearLayout
-    private val SAANN_ORANGE = 0xFFFF7A18.toInt()
+    private val SAANN_ORANGE = 0xFFE5484D.toInt()
     private var agentTv: TextView? = null
     private val dotTask = object : Runnable {
         override fun run() {
@@ -131,8 +131,8 @@ class MainActivity : Activity() {
         orb = OrbView(this)
         val menu = IconView(this, "menu", INK)
         menu.setOnClickListener { openRecents() }
-        head.addView(menu, LinearLayout.LayoutParams(dp(34), dp(34)))
-        head.addView(orb, LinearLayout.LayoutParams(dp(32), dp(32)))
+        head.addView(menu, LinearLayout.LayoutParams(dp(28), dp(28)))
+        head.addView(orb, LinearLayout.LayoutParams(dp(26), dp(26)))
         orb.setOnClickListener { toggleBrain() }
         val col = LinearLayout(this)
         col.orientation = LinearLayout.VERTICAL
@@ -228,7 +228,7 @@ class MainActivity : Activity() {
         val cg = GradientDrawable()
         cg.cornerRadius = dp(28).toFloat()
         cg.setColor(PANEL)
-        cg.setStroke(dp(1), 0x55FF7A18)
+        cg.setStroke(dp(1), 0x55E5484D)
         inCard.background = cg
         chips = LinearLayout(this)
         chips.orientation = LinearLayout.HORIZONTAL
@@ -251,11 +251,11 @@ class MainActivity : Activity() {
         row.gravity = Gravity.CENTER_VERTICAL
         val plus = IconView(this, "plus", CYAN)
         plus.setOnClickListener { attachMenu() }
-        row.addView(plus, LinearLayout.LayoutParams(dp(40), dp(40)))
+        row.addView(plus, LinearLayout.LayoutParams(dp(34), dp(34)))
         row.addView(input, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         val mic = IconView(this, "mic", CYAN)
         mic.setOnClickListener { startVoice() }
-        row.addView(mic, LinearLayout.LayoutParams(dp(40), dp(40)))
+        row.addView(mic, LinearLayout.LayoutParams(dp(34), dp(34)))
         val up = IconView(this, "wave", BG, CYAN)
         pressFx(plus)
         pressFx(mic)
@@ -278,7 +278,7 @@ class MainActivity : Activity() {
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) { updateAction() }
             override fun afterTextChanged(s: android.text.Editable?) {}
         })
-        val slp = LinearLayout.LayoutParams(dp(38), dp(38))
+        val slp = LinearLayout.LayoutParams(dp(32), dp(32))
         slp.leftMargin = dp(4)
         row.addView(send, slp)
         inCard.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
@@ -604,8 +604,8 @@ class MainActivity : Activity() {
             tv.setPadding(dp(14), dp(10), dp(14), dp(10))
             tv.background = GradientDrawable().apply {
                 cornerRadius = dp(18).toFloat()
-                setColor(0xFF241A15.toInt())
-                setStroke(dp(1), 0x55FF7A18)
+                setColor(0xFF1A0E0E.toInt())
+                setStroke(dp(1), 0x55E5484D)
             }
         } else {
             tv.setPadding(dp(4), dp(4), dp(4), dp(8))
@@ -787,11 +787,11 @@ class MainActivity : Activity() {
             cm.setPrimaryClip(android.content.ClipData.newPlainText("SAANN", text))
             Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
         }
-        row.addView(cp, LinearLayout.LayoutParams(dp(30), dp(26)))
+        row.addView(cp, LinearLayout.LayoutParams(dp(26), dp(22)))
         if (!mine) {
             val sp = IconView(this, "speaker", DIM)
             sp.setOnClickListener { Voice.speakThen(this, text) { } }
-            row.addView(sp, LinearLayout.LayoutParams(dp(30), dp(26)))
+            row.addView(sp, LinearLayout.LayoutParams(dp(26), dp(22)))
         }
         return row
     }
@@ -994,7 +994,7 @@ class MainActivity : Activity() {
         g.setStroke(dp(1), 0x33FFFFFF)
         b.background = g
         b.setOnClickListener { onClick() }
-        val lp = LinearLayout.LayoutParams(dp(40), dp(40))
+        val lp = LinearLayout.LayoutParams(dp(34), dp(34))
         lp.leftMargin = dp(4)
         lp.rightMargin = dp(4)
         b.layoutParams = lp
@@ -1007,8 +1007,8 @@ class MainActivity : Activity() {
         box.setPadding(dp(8), dp(8), dp(8), dp(8))
         box.background = GradientDrawable().apply {
             cornerRadius = dp(14).toFloat()
-            setColor(0xFF151515.toInt())
-            setStroke(dp(1), 0x55FF7A18)
+            setColor(0xFF101010.toInt())
+            setStroke(dp(1), 0x55E5484D)
         }
 
         val width = dp(if (compact) 148 else 248)

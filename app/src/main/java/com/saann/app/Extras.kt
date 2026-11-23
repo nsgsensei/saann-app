@@ -116,9 +116,9 @@ object Attach {
 
 // ---------------- brain detail screen ----------------
 object BrainDetail {
-    private const val BG = 0xFF080808.toInt()
-    private const val PANEL = 0xFF151515.toInt()
-    private const val CYAN = 0xFFFF7A18.toInt()
+    private const val BG = 0xFF050505.toInt()
+    private const val PANEL = 0xFF101010.toInt()
+    private const val CYAN = 0xFFE5484D.toInt()
     private const val INK = 0xFFFAF7F2.toInt()
     private const val DIM = 0xFFB8ADA5.toInt()
 
@@ -170,7 +170,7 @@ object BrainDetail {
             val g = GradientDrawable()
             g.cornerRadius = dp(16).toFloat()
             g.setColor(PANEL)
-            g.setStroke(dp(1), 0x55FF7A18)
+            g.setStroke(dp(1), 0x55E5484D)
             c.background = g
             val lp = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
             lp.topMargin = dp(8)

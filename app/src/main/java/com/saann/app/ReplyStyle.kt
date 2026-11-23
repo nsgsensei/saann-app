@@ -64,7 +64,7 @@ object ReplyStyle {
                     RelativeSizeSpan(0.88f), start, out.length, flag
                 )
                 out.setSpan(
-                    BackgroundColorSpan(0xFF151515.toInt()),
+                    BackgroundColorSpan(0xFF101010.toInt()),
                     start, out.length, flag
                 )
                 continue

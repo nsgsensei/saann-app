@@ -20,9 +20,9 @@ import android.widget.TextView
 import org.json.JSONObject
 
 object Onboarding {
-    private val BG = 0xFF080808.toInt()
-    private val PANEL = 0xFF151515.toInt()
-    private val ORANGE = 0xFFFF7A18.toInt()
+    private val BG = 0xFF050505.toInt()
+    private val PANEL = 0xFF101010.toInt()
+    private val ORANGE = 0xFFE5484D.toInt()
     private val RED = 0xFFEF4444.toInt()
     private val INK = 0xFFFAF7F2.toInt()
     private val DIM = 0xFFB8ADA5.toInt()
@@ -103,7 +103,7 @@ object Onboarding {
             b.background = GradientDrawable().apply {
                 cornerRadius = dp(16).toFloat()
                 setColor(if (primary) ORANGE else PANEL)
-                setStroke(dp(1), if (primary) ORANGE else 0x55FF7A18)
+                setStroke(dp(1), if (primary) ORANGE else 0x55E5484D)
             }
             val lp = LinearLayout.LayoutParams(-1, dp(48))
             lp.topMargin = dp(12)
@@ -130,7 +130,7 @@ object Onboarding {
             e.background = GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat()
                 setColor(PANEL)
-                setStroke(dp(1), 0x55FF7A18)
+                setStroke(dp(1), 0x55E5484D)
             }
             e.setText(Keys.get(a, storage) ?: "")
             box.addView(e, LinearLayout.LayoutParams(-1, -2))
@@ -175,7 +175,7 @@ object Onboarding {
                 image.background = GradientDrawable().apply {
                     cornerRadius = dp(16).toFloat()
                     setColor(PANEL)
-                    setStroke(dp(1), 0x55FF7A18)
+                    setStroke(dp(1), 0x55E5484D)
                 }
 
                 val lp = LinearLayout.LayoutParams(-1, dp(240))

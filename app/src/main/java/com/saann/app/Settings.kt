@@ -14,7 +14,7 @@ import android.widget.Toast
 object Settings {
     private const val INK = 0xFFFAF7F2.toInt()
     private const val DIM = 0xFFB8ADA5.toInt()
-    private const val CYAN = 0xFFFF7A18.toInt()
+    private const val CYAN = 0xFFE5484D.toInt()
 
     fun show(a: Activity, onAgent: () -> Unit, agentLabel: () -> String) {
         val den = a.resources.displayMetrics.density

@@ -31,9 +31,9 @@ object CloudVoice {
     private var callback: (() -> Unit)? = null
     private var generation = 0
 
-    private val BG = 0xFF080808.toInt()
-    private val PANEL = 0xFF151515.toInt()
-    private val ORANGE = 0xFFFF7A18.toInt()
+    private val BG = 0xFF050505.toInt()
+    private val PANEL = 0xFF101010.toInt()
+    private val ORANGE = 0xFFE5484D.toInt()
     private val INK = 0xFFFAF7F2.toInt()
 
     private class ProviderError(val code: Int) : Exception()

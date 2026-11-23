@@ -19,7 +19,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import java.io.File
 
-class IconView(ctx: Context, var kind: String, var tint: Int = 0xFFFF7A18.toInt(), val disc: Int = 0) : View(ctx) {
+class IconView(ctx: Context, var kind: String, var tint: Int = 0xFFE5484D.toInt(), val disc: Int = 0) : View(ctx) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private val f = Paint(Paint.ANTI_ALIAS_FLAG)
     override fun onDraw(c: Canvas) {
@@ -107,8 +107,8 @@ class IconView(ctx: Context, var kind: String, var tint: Int = 0xFFFF7A18.toInt(
 }
 
 object Ui2 {
-    private const val PANEL = 0xFF151515.toInt()
-    private const val CYAN = 0xFFFF7A18.toInt()
+    private const val PANEL = 0xFF101010.toInt()
+    private const val CYAN = 0xFFE5484D.toInt()
     private const val INK = 0xFFFAF7F2.toInt()
     private const val DIM = 0xFFB8ADA5.toInt()
     var onChatTap: (() -> Unit)? = null
@@ -145,7 +145,7 @@ object Ui2 {
         r.orientation = LinearLayout.HORIZONTAL
         r.gravity = Gravity.CENTER_VERTICAL
         r.setPadding(0, (10 * den).toInt(), 0, (10 * den).toInt())
-        r.addView(IconView(a, kind, CYAN, 0x1FFF7A18), LinearLayout.LayoutParams((46 * den).toInt(), (46 * den).toInt()))
+        r.addView(IconView(a, kind, CYAN, 0x1FE5484D), LinearLayout.LayoutParams((38 * den).toInt(), (38 * den).toInt()))
         val t = TextView(a)
         t.text = label; t.setTextColor(INK); t.textSize = 16f
         t.setPadding((16 * den).toInt(), 0, 0, 0)
@@ -195,14 +195,14 @@ object Ui2 {
         val den = a.resources.displayMetrics.density
         val bar = LinearLayout(a)
         bar.orientation = LinearLayout.HORIZONTAL
-        bar.setBackgroundColor(0xFF080808.toInt())
+        bar.setBackgroundColor(0xFF050505.toInt())
         bar.setPadding(0, (6 * den).toInt(), 0, (6 * den).toInt())
         val items = listOf(Triple("chat", "Chat", true), Triple("folder", "Projects", false), Triple("tasks", "Tasks", false), Triple("library", "Library", false))
         for ((k, n, on) in items) {
             val c = LinearLayout(a)
             c.orientation = LinearLayout.VERTICAL
             c.gravity = Gravity.CENTER_HORIZONTAL
-            c.addView(IconView(a, k, if (on) CYAN else DIM), LinearLayout.LayoutParams((26 * den).toInt(), (26 * den).toInt()))
+            c.addView(IconView(a, k, if (on) CYAN else DIM), LinearLayout.LayoutParams((22 * den).toInt(), (22 * den).toInt()))
             val l = TextView(a)
             l.text = n; l.textSize = 11f; l.setTextColor(if (on) CYAN else DIM); l.gravity = Gravity.CENTER
             c.addView(l)
