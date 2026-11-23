@@ -292,8 +292,8 @@ def advance(task_id, agent="saann", approved=False):
             )
 
             return (
-                "Approval needed before: " + step["title"] +
-                ". Run /task " + task_id + " approve to continue."
+                "I can do that, but I need your approval before " +
+                step["title"].lower() + ". Say yes when you're ready."
             )
 
         if kind == "approval" and approved:
@@ -348,7 +348,23 @@ def advance(task_id, agent="saann", approved=False):
             _set_step(task, index, "done", "Prepared by SAANN.")
 
         else:
-            _set_step(task, index, "pending", "Tool integration pending.")
+            children = _expand_step(step, task)
+
+            if children:
+                task["steps"][index + 1:index + 1] = children
+                _set_step(
+                    task,
+                    index,
+                    "done",
+                    "Expanded into " + str(len(children)) + " concrete steps."
+                )
+            else:
+                _set_step(
+                    task,
+                    index,
+                    "pending",
+                    "Waiting for a suitable phone tool."
+                )
 
         index += 1
 
@@ -512,3 +528,215 @@ def command(msg):
         return "Unknown task action: " + action
 
     return None
+
+
+ACTIVE_ID = None
+
+_AFFIRM = re.compile(
+    r"^(yes+|yeah|yep|yup|sure|okay|ok|go ahead|do it|continue|approve|"
+    r"approved|send it|share it|proceed)\b",
+    re.I
+)
+
+_STOP = re.compile(
+    r"^(stop|cancel|abort|never mind|nevermind|don't do it|do not do it)\b",
+    re.I
+)
+
+_PROGRESS = re.compile(
+    r"\b(what are you doing|how is it going|status|progress|"
+    r"what happened|where are you)\b",
+    re.I
+)
+
+_ACTION = re.compile(
+    r"\b(download|send|share|post|reply|message|text|open|find|search|"
+    r"look up|fix|build|create|make|write|test|install|organize|clean|"
+    r"backup|schedule|remind|call|summarize|translate|convert|compare|"
+    r"research|monitor|watch|check)\b",
+    re.I
+)
+
+_QUESTION = re.compile(
+    r"^(what|who|why|when|where|how|is|are|can|could|would|should|do|does|"
+    r"did|tell me about)\b",
+    re.I
+)
+
+
+def _expand_step(step, task):
+    kind = step["kind"]
+    detail = (step.get("detail") or "").strip()
+    children = []
+
+    if kind == "act":
+        if detail:
+            children.append(
+                _step("Prepare the action", "prepare_action", detail)
+            )
+            children.append(
+                _step("Check permissions and safety", "safety", detail)
+            )
+            children.append(
+                _step("Perform the action", "perform_action", detail)
+            )
+            children.append(
+                _step("Confirm the result", "verify", detail)
+            )
+        else:
+            children.append(
+                _step("Identify the exact outcome", "clarify", "")
+            )
+            children.append(
+                _step("Choose the best available tool", "choose_tool", "")
+            )
+            children.append(
+                _step("Perform the action", "perform_action", "")
+            )
+
+    elif kind == "write_code":
+        children.append(
+            _step("Inspect the relevant files", "inspect_code", detail)
+        )
+        children.append(
+            _step("Design the smallest safe change", "design_change", detail)
+        )
+        children.append(
+            _step("Apply the change", "apply_change", detail)
+        )
+        children.append(
+            _step("Run checks or tests", "test", detail)
+        )
+        children.append(
+            _step("Repair any failure", "repair", detail)
+        )
+
+    elif kind == "gather":
+        children.append(
+            _step("Identify what information is missing", "clarify", detail)
+        )
+        children.append(
+            _step("Collect the available context", "collect_context", detail)
+        )
+        children.append(
+            _step("Summarize what is known", "summarize", detail)
+        )
+
+    elif kind == "prepare_share":
+        children.append(
+            _step("Confirm the file is ready", "verify", detail)
+        )
+        children.append(
+            _step("Choose the sharing destination", "choose_target", detail)
+        )
+        children.append(
+            _step("Prepare the message", "prepare_message", detail)
+        )
+
+    elif kind == "perform_action":
+        children.append(
+            _step("Use the phone tool", "use_tool", detail)
+        )
+        children.append(
+            _step("Check whether it succeeded", "verify", detail)
+        )
+
+    if len(task["steps"]) + len(children) > 10000:
+        return []
+
+    return children
+
+
+def _is_actionable(text):
+    if _QUESTION.match(text.strip()):
+        return False
+
+    return bool(_ACTION.search(text))
+
+
+def _natural_status(task):
+    done = sum(
+        1 for step in task["steps"] if step["status"] == "done"
+    )
+    total = len(task["steps"])
+
+    current = None
+
+    for step in task["steps"]:
+        if step["status"] in ("running", "awaiting_approval"):
+            current = step
+            break
+
+    if task["status"] == "awaiting_approval" and current:
+        return (
+            "I'm ready to " + current["title"].lower() +
+            ", but I need your approval first."
+        )
+
+    if current:
+        return (
+            "I'm working on it: " + current["title"].lower() +
+            ". " + str(done) + " of " + str(total) + " steps are complete."
+        )
+
+    if task["status"] == "done":
+        return "That's done. I saved what worked for next time."
+
+    return (
+        "I'm still working on it. " + str(done) + " of " + str(total) +
+        " steps are complete."
+    )
+
+
+def observe(text):
+    global ACTIVE_ID
+
+    _load()
+
+    clean = text.strip()
+
+    if not clean:
+        return None
+
+    if ACTIVE_ID and _STOP.match(clean):
+        task = TASKS.get(ACTIVE_ID)
+
+        if task:
+            task["status"] = "cancelled"
+
+            for step in task["steps"]:
+                if step["status"] in ("pending", "running"):
+                    step["status"] = "cancelled"
+
+            _save()
+            ACTIVE_ID = None
+
+            return "Stopped. I won't continue that task."
+
+    if ACTIVE_ID and _AFFIRM.match(clean):
+        task = TASKS.get(ACTIVE_ID)
+
+        if task and task["status"] == "awaiting_approval":
+            return advance(ACTIVE_ID, approved=True)
+
+    if ACTIVE_ID and _PROGRESS.search(clean):
+        task = TASKS.get(ACTIVE_ID)
+
+        if task:
+            return _natural_status(task)
+
+    if not _is_actionable(clean):
+        return None
+
+    task = create(clean)
+    ACTIVE_ID = task["id"]
+
+    result = advance(ACTIVE_ID)
+
+    if task["status"] == "awaiting_approval":
+        return result
+
+    return (
+        "I'll handle that. " + result +
+        " I'll keep you updated as I make progress."
+    )
