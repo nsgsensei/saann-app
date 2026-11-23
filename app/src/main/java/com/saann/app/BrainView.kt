@@ -1,398 +1,381 @@
 package com.saann.app
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RadialGradient
+import android.graphics.Shader
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.view.MotionEvent
 import android.view.View
-import android.view.animation.LinearInterpolator
-import org.json.JSONObject
-import java.util.Random
+import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.sqrt
+import java.util.Random
 
-class BrainView(ctx: Context) : View(ctx) {
-    private class Node(val name: String, val x: Float, val y: Float, val z: Float, val hub: Boolean) {
-        var act = 0f
-        var target = 0f
-        var bump = 0f
-        val sat = Array(10) { FloatArray(4) }
-        fun eff(): Float = if (act > bump) act else bump
-    }
+class BrainView(context: Context) : View(context), SensorEventListener {
 
-    private class Dot(val node: Node, val sx: Float, val sy: Float, val sz: Float, val z: Float)
+    private class Node(val x: Float, val y: Float, val z: Float, val layer: Int)
 
-    private val d = resources.displayMetrics.density
-    private val nodes = LinkedHashMap<String, Node>()
-    private val edges = ArrayList<Pair<Node, Node>>()
-    private val pos = mapOf(
-        "language" to floatArrayOf(-0.62f, 0.10f, 0.20f),
-        "visual" to floatArrayOf(0.45f, 0.10f, -0.70f),
-        "color" to floatArrayOf(0.70f, 0.30f, -0.35f),
-        "audio" to floatArrayOf(-0.55f, -0.40f, 0.05f),
-        "touch" to floatArrayOf(0.00f, 0.60f, -0.10f),
-        "smell" to floatArrayOf(0.15f, -0.15f, 0.85f),
-        "thalamus" to floatArrayOf(0.00f, 0.00f, 0.00f),
-        "hippocampus" to floatArrayOf(-0.10f, -0.28f, -0.20f),
-        "amygdala" to floatArrayOf(0.22f, -0.32f, 0.20f),
-        "cerebellum" to floatArrayOf(0.00f, -0.58f, -0.72f),
-        "prefrontal" to floatArrayOf(0.00f, 0.30f, 0.85f),
-        "motor" to floatArrayOf(0.00f, 0.62f, 0.28f)
-    )
-    private val hubs = setOf("thalamus", "hippocampus", "amygdala", "cerebellum", "prefrontal", "motor")
-    private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 9f * resources.displayMetrics.scaledDensity }
+    private class Link(val a: Int, val b: Int)
 
-    private var t = 0f
-    private var yaw = 0f
-    private var pitch = 0.25f
+    private class Pulse(val link: Int, var t: Float, val speed: Float, val color: Int)
+
+    private val random = Random(2026L)
+    private val nodes = ArrayList<Node>()
+    private val links = ArrayList<Link>()
+    private val pulses = ArrayList<Pulse>()
+
+    private var yaw = 0.55f
+    private var pitch = 0.22f
+    private var zoom = 1.0f
+    private var tiltYaw = 0f
+    private var tiltPitch = 0f
+
+    private var activity = 0.18f
+    private var time = 0f
+    private var running = false
+    private var sensorsOn = false
+
     private var lastX = 0f
     private var lastY = 0f
-    // SAANN_LEARNED_GRAPH_V7
-    private var learnedMode = true
-    private var latestSnapshot = JSONObject()
-    private var concepts = 0
-    private var novelty = 0f
-    private var left = 0f
-    private var right = 0f
-    @Volatile private var running = false
-    private val out = FloatArray(4)
+    private var lastPinch = 0f
 
-    private val anim = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 1000
-        repeatCount = ValueAnimator.INFINITE
-        interpolator = LinearInterpolator()
-        addUpdateListener {
-            t += 0.016f
-            for (n in nodes.values) {
-                n.act += (n.target - n.act) * 0.15f
-                n.bump *= 0.96f
-            }
-            invalidate()
+    private val nodePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val linkPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val pulsePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    private val sensorManager =
+        context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+
+    private val loop = object : Runnable {
+        override fun run() {
+            update()
+            postInvalidateOnAnimation()
+            postDelayed(this, 16)
         }
     }
 
     init {
-        setBackgroundColor(0xFF080808.toInt())
-        for (n in pos.keys) ensure(n)
+        buildNetwork()
+        linkPaint.style = Paint.Style.STROKE
+        linkPaint.strokeCap = Paint.Cap.ROUND
+        pulsePaint.style = Paint.Style.FILL
+        glowPaint.style = Paint.Style.FILL
+        nodePaint.style = Paint.Style.FILL
     }
 
-    private fun ensure(name: String): Node {
-        nodes[name]?.let { return it }
-        val rnd = Random(name.hashCode().toLong())
-        val p = pos[name] ?: run {
-            val th = rnd.nextFloat() * 6.2832f
-            val ph = (rnd.nextFloat() - 0.5f) * 2.4f
-            floatArrayOf(0.95f * cos(th) * cos(ph), 0.95f * sin(ph), 0.95f * sin(th) * cos(ph))
-        }
-        val n = Node(name, p[0], p[1], p[2], name in hubs)
-        for (s in n.sat) {
-            s[0] = (rnd.nextFloat() - 0.5f) * 0.34f
-            s[1] = (rnd.nextFloat() - 0.5f) * 0.34f
-            s[2] = (rnd.nextFloat() - 0.5f) * 0.34f
-            s[3] = rnd.nextFloat() * 6.28f
-        }
-        nodes[name] = n
-        rebuildEdges()
-        return n
-    }
+    private fun buildNetwork() {
+        val layers = intArrayOf(10, 18, 18, 12, 6)
+        val first = ArrayList<Int>()
 
-    private fun rebuildEdges() {
-        edges.clear()
-        val th = nodes["thalamus"] ?: return
-        for (n in nodes.values) if (!n.hub) edges.add(Pair(n, th))
-        fun link(a: String, b: String) {
-            val x = nodes[a]
-            val y = nodes[b]
-            if (x != null && y != null) edges.add(Pair(x, y))
-        }
-        link("thalamus", "prefrontal"); link("thalamus", "hippocampus"); link("hippocampus", "amygdala")
-        link("prefrontal", "motor"); link("cerebellum", "motor"); link("thalamus", "cerebellum")
-        link("amygdala", "prefrontal"); link("language", "prefrontal"); link("visual", "hippocampus")
-    }
+        for (layer in layers.indices) {
+            val count = layers[layer]
+            val ids = ArrayList<Int>()
 
-    fun pulse(textIn: String) {
-        val l = textIn.lowercase()
-        nodes["motor"]?.bump = 1f
-        nodes["prefrontal"]?.bump = 0.8f
-        nodes["cerebellum"]?.bump = 0.6f
-        if ("screen" in l || "look" in l) nodes["visual"]?.bump = 0.9f
-        if ("speak" in l || "listen" in l) nodes["audio"]?.bump = 0.9f
-        if ("tap" in l || "swipe" in l || "click" in l || "scroll" in l) nodes["touch"]?.bump = 0.9f
+            for (i in 0 until count) {
+                val angle = (i.toFloat() / count) * 6.2831853f
+                val spread = 0.62f + layer * 0.045f
+                val radius = 0.42f + 0.16f * sin(angle * 2.3f + layer)
+                val x = (layer - (layers.size - 1) / 2f) * 0.42f
+                val y = cos(angle) * radius * spread
+                val z = sin(angle) * radius * spread
+                nodes.add(Node(x, y, z, layer))
+                ids.add(nodes.size - 1)
+            }
+
+            if (layer > 0) {
+                val previous = first
+                for (id in ids) {
+                    val connections = 2 + random.nextInt(3)
+                    for (k in 0 until connections) {
+                        val target = previous[random.nextInt(previous.size)]
+                        links.add(Link(target, id))
+                    }
+                }
+            }
+
+            first.clear()
+            first.addAll(ids)
+        }
     }
 
     fun start() {
         if (running) return
         running = true
-        Thread {
-            while (running) {
-                val s = Host.snapshot()
-                post { take(s) }
-                try { Thread.sleep(500) } catch (e: InterruptedException) { break }
-            }
-        }.start()
+        post(loop)
+        enableSensors()
     }
 
-    fun stop() { running = false }
+    fun stop() {
+        running = false
+        removeCallbacks(loop)
+        disableSensors()
+    }
 
-    private fun take(json: String) {
-        try {
-            val o = JSONObject(json)
-            latestSnapshot = o
-            val arr = o.optJSONArray("nodes")
-            if (arr != null) {
-                for (i in 0 until arr.length()) {
-                    val e = arr.optJSONObject(i) ?: continue
-                    val name = e.optString("name")
-                    if (name.isEmpty()) continue
-                    ensure(name).target = e.optDouble("act", 0.0).toFloat().coerceIn(0f, 1f)
-                }
-            }
-            concepts = o.optInt("concepts", concepts)
-            novelty = o.optDouble("novelty", novelty.toDouble()).toFloat()
-            left = o.optDouble("left", left.toDouble()).toFloat()
-            right = o.optDouble("right", right.toDouble()).toFloat()
-        } catch (e: Exception) {
+    fun pulse(text: String) {
+        activity = min(1.35f, activity + 0.42f)
+
+        val seed = abs(text.hashCode())
+        val hue = (seed % 360) / 360f
+        val color = Color.HSVToColor(
+            floatArrayOf(hue * 360f, 0.72f, 1f)
+        )
+
+        val count = 7 + (seed % 9)
+        for (i in 0 until count) {
+            if (links.isEmpty()) break
+            pulses.add(
+                Pulse(
+                    random.nextInt(links.size),
+                    random.nextFloat() * 0.25f,
+                    0.010f + random.nextFloat() * 0.018f,
+                    color
+                )
+            )
         }
     }
 
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        if (!anim.isStarted) anim.start()
+    private fun enableSensors() {
+        if (sensorsOn) return
+        val sensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        if (sensor != null) {
+            sensorManager?.registerListener(
+                this,
+                sensor,
+                SensorManager.SENSOR_DELAY_GAME
+            )
+            sensorsOn = true
+        }
+    }
+
+    private fun disableSensors() {
+        if (!sensorsOn) return
+        sensorManager?.unregisterListener(this)
+        sensorsOn = false
+    }
+
+    override fun onSensorChanged(event: SensorEvent) {
+        if (event.sensor.type != Sensor.TYPE_ROTATION_VECTOR) return
+
+        val matrix = FloatArray(9)
+        val orientation = FloatArray(3)
+        SensorManager.getRotationMatrixFromVector(matrix, event.values)
+        SensorManager.getOrientation(matrix, orientation)
+
+        tiltYaw = orientation[2] * 0.30f
+        tiltPitch = orientation[1] * 0.30f
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
     }
 
     override fun onDetachedFromWindow() {
-        anim.cancel()
-        running = false
+        stop()
         super.onDetachedFromWindow()
     }
 
-    override fun onTouchEvent(ev: MotionEvent): Boolean {
-        when (ev.action) {
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                if (ev.y < 36f * d) {
-                    learnedMode = !learnedMode
-                    invalidate()
-                    return true
+                lastX = event.x
+                lastY = event.y
+            }
+
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                if (event.pointerCount >= 2) {
+                    lastPinch = pinchDistance(event)
                 }
-                parent?.requestDisallowInterceptTouchEvent(true)
-                lastX = ev.x
-                lastY = ev.y
             }
+
             MotionEvent.ACTION_MOVE -> {
-                yaw += (ev.x - lastX) * 0.01f
-                pitch = (pitch + (ev.y - lastY) * 0.006f).coerceIn(-1.1f, 1.1f)
-                lastX = ev.x
-                lastY = ev.y
+                if (event.pointerCount >= 2) {
+                    val distance = pinchDistance(event)
+                    if (lastPinch > 0f) {
+                        zoom = (zoom * distance / lastPinch).coerceIn(0.55f, 2.20f)
+                    }
+                    lastPinch = distance
+                } else {
+                    yaw += (event.x - lastX) * 0.0065f
+                    pitch = (pitch + (event.y - lastY) * 0.0065f)
+                        .coerceIn(-1.15f, 1.15f)
+                }
+
+                lastX = event.x
+                lastY = event.y
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
-                parent?.requestDisallowInterceptTouchEvent(false)
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                lastPinch = 0f
+            }
         }
+
         return true
     }
 
-    private fun colorOf(name: String): Int = when {
-        name == "language" -> 0xFFFF7A18.toInt()
-        name == "visual" || name == "color" -> 0xFF78AFFF.toInt()
-        name in hubs -> 0xFFFF7A18.toInt()
-        else -> 0xFFFF442B.toInt()
+    private fun pinchDistance(event: MotionEvent): Float {
+        if (event.pointerCount < 2) return 0f
+        val dx = event.getX(0) - event.getX(1)
+        val dy = event.getY(0) - event.getY(1)
+        return sqrt(dx * dx + dy * dy)
     }
 
-    override fun onDraw(c: Canvas) {
-        if (learnedMode) {
-            drawLearned(c)
-            return
-        }
-        val w = width.toFloat()
-        val h = height.toFloat()
-        val cx = w / 2f
-        val cy = h / 2f
-        val sc = min(w, h) * 0.42f
-        val ay = yaw + t * 0.35f
-        val ca = cos(ay); val sa = sin(ay); val cp = cos(pitch); val sp = sin(pitch)
+    private fun update() {
+        time += 0.016f
 
-        fun proj(x: Float, y: Float, z: Float) {
-            val x1 = x * ca + z * sa
-            val z1 = -x * sa + z * ca
-            val y1 = y * cp - z1 * sp
-            val z2 = y * sp + z1 * cp
-            val k = 2.4f / (2.4f + z2)
-            out[0] = cx + x1 * sc * k
-            out[1] = cy - y1 * sc * k
-            out[2] = k
-            out[3] = z2
+        if (lastPinch == 0f) {
+            yaw += 0.0021f
         }
 
-        // links and travelling pulses
-        for ((idx, e) in edges.withIndex()) {
-            proj(e.first.x, e.first.y, e.first.z)
-            val ax = out[0]; val ay2 = out[1]; val ak = out[2]
-            proj(e.second.x, e.second.y, e.second.z)
-            val bx = out[0]; val by = out[1]; val bk = out[2]
-            val act = if (e.first.eff() > e.second.eff()) e.first.eff() else e.second.eff()
-            line.color = colorOf(e.first.name)
-            line.alpha = ((22 + 140 * act) * (ak + bk) / 2f).toInt().coerceIn(0, 255)
-            line.strokeWidth = (0.8f + 2f * act) * d
-            c.drawLine(ax, ay2, bx, by, line)
-            if (act > 0.12f) {
-                val ph = (t * 0.9f + idx * 0.37f) % 1f
-                fill.color = 0xFFFAF7F2.toInt()
-                fill.alpha = (120 + 135 * act).toInt().coerceIn(0, 255)
-                c.drawCircle(ax + (bx - ax) * ph, ay2 + (by - ay2) * ph, (1.6f + 2.4f * act) * d, fill)
-            }
+        yaw += (tiltYaw - yaw * 0.06f) * 0.02f
+        pitch += (tiltPitch - pitch * 0.06f) * 0.02f
+
+        activity = max(0.16f, activity * 0.986f)
+
+        val iterator = pulses.iterator()
+        while (iterator.hasNext()) {
+            val pulse = iterator.next()
+            pulse.t += pulse.speed * (0.75f + activity)
+            if (pulse.t > 1f) iterator.remove()
         }
 
-        // nodes and satellite neurons, far ones first
-        val dots = ArrayList<Dot>()
-        for (n in nodes.values) {
-            proj(n.x, n.y, n.z)
-            dots.add(Dot(n, out[0], out[1], out[2], out[3]))
-        }
-        dots.sortByDescending { it.z }
-        for (dt in dots) {
-            val n = dt.node
-            val eff = n.eff()
-            val col = colorOf(n.name)
-            for (s in n.sat) {
-                val o = 0.02f * sin(t * 2f + s[3])
-                proj(n.x + s[0] + o, n.y + s[1] + o, n.z + s[2] - o)
-                fill.color = col
-                fill.alpha = ((35 + 170 * eff) * out[2]).toInt().coerceIn(0, 255)
-                c.drawCircle(out[0], out[1], 1.3f * d * out[2], fill)
-                if (eff > 0.25f) {
-                    line.color = col
-                    line.alpha = (45 * eff).toInt()
-                    line.strokeWidth = 0.6f * d
-                    c.drawLine(dt.sx, dt.sy, out[0], out[1], line)
-                }
-            }
-            val r = (4f + 7f * eff) * d * dt.sz
-            fill.color = col
-            fill.alpha = (25 + 110 * eff).toInt()
-            c.drawCircle(dt.sx, dt.sy, r * 3.2f, fill)
-            fill.alpha = (90 + 150 * eff).toInt()
-            c.drawCircle(dt.sx, dt.sy, r * 1.6f, fill)
-            fill.alpha = 255
-            c.drawCircle(dt.sx, dt.sy, r * 0.7f, fill)
-            text.color = col
-            text.alpha = (110 + 120 * dt.sz.coerceAtMost(1f)).toInt().coerceIn(0, 255)
-            c.drawText(n.name, dt.sx + r * 1.8f, dt.sy + r * 0.4f, text)
-        }
-
-        text.color = 0xFFB8ADA5.toInt()
-        text.alpha = 230
-        c.drawText("REGIONS · schematic · tap header to switch", 10f * d, 16f * d, text)
-        c.drawText("L ${"%.2f".format(left)}   R ${"%.2f".format(right)}   drag to rotate", 10f * d, h - 8f * d, text)
-    }
-
-    private fun drawLearned(c: Canvas) {
-        val links = latestSnapshot.optJSONArray("links")
-        val names = LinkedHashSet<String>()
-        val records = ArrayList<Triple<String, String, Float>>()
-
-        if (links != null) {
-            for (i in 0 until minOf(40, links.length())) {
-                val item = links.optJSONObject(i) ?: continue
-                val a = item.optString("a")
-                val b = item.optString("b")
-                val weight = item.optDouble("w", 0.0).toFloat()
-                if (a.isBlank() || b.isBlank() || !weight.isFinite()) continue
-                names.add(a)
-                names.add(b)
-                records.add(Triple(a, b, weight))
-            }
-        }
-
-        val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0xFFB8ADA5.toInt()
-            textSize = 10f * resources.displayMetrics.scaledDensity
-        }
-
-        c.drawText(
-            "LEARNED ASSOCIATIONS · tap header to switch",
-            10f * d, 18f * d, labelPaint
-        )
-
-        if (names.isEmpty()) {
-            labelPaint.color = 0xFFFAF7F2.toInt()
-            c.drawText(
-                "No learned links reported yet.",
-                14f * d, height / 2f, labelPaint
-            )
-            return
-        }
-
-        val positions = LinkedHashMap<String, Pair<Float, Float>>()
-        val sortedNames = names.sorted()
-        val cx = width / 2f
-        val cy = height / 2f
-        val rx = maxOf(12f * d, width * 0.34f)
-        val ry = maxOf(12f * d, (height - 90f * d) * 0.40f)
-
-        for ((index, name) in sortedNames.withIndex()) {
-            val angle = index * Math.PI * 2.0 / sortedNames.size
-            positions[name] = Pair(
-                cx + cos(angle).toFloat() * rx,
-                cy + sin(angle).toFloat() * ry
-            )
-        }
-
-        val maxWeight = maxOf(
-            0.001f,
-            records.maxOfOrNull { kotlin.math.abs(it.third) } ?: 1f
-        )
-
-        for ((a, b, weight) in records) {
-            val start = positions[a] ?: continue
-            val end = positions[b] ?: continue
-            val strength = (
-                kotlin.math.abs(weight) / maxWeight
-            ).coerceIn(0f, 1f)
-
-            line.color = 0xFF78AFFF.toInt()
-            line.alpha = (45 + strength * 165).toInt()
-            line.strokeWidth = (0.6f + strength * 2.0f) * d
-            c.drawLine(
-                start.first, start.second,
-                end.first, end.second, line
-            )
-        }
-
-        val showAllLabels = positions.size <= 18
-        for ((index, entry) in positions.entries.withIndex()) {
-            val name = entry.key
-            val point = entry.value
-            fill.color = 0xFFFF7A18.toInt()
-            fill.alpha = 255
-            c.drawCircle(point.first, point.second, 3.5f * d, fill)
-
-            if (showAllLabels || index % 3 == 0) {
-                labelPaint.color = 0xFFFAF7F2.toInt()
-                val caption = name.take(18)
-                val tx = (
-                    point.first - labelPaint.measureText(caption) / 2f
-                ).coerceIn(
-                    4f * d,
-                    maxOf(
-                        4f * d,
-                        width - labelPaint.measureText(caption) - 4f * d
+        if (activity > 0.30f && random.nextFloat() < activity * 0.20f && links.isNotEmpty()) {
+            pulses.add(
+                Pulse(
+                    random.nextInt(links.size),
+                    0f,
+                    0.012f + random.nextFloat() * 0.016f,
+                    Color.HSVToColor(
+                        floatArrayOf(
+                            (time * 22f + random.nextInt(70)) % 360f,
+                            0.68f,
+                            1f
+                        )
                     )
                 )
-                c.drawText(caption, tx, point.second - 7f * d, labelPaint)
-            }
+            )
+        }
+    }
+
+    private fun project(
+        x: Float,
+        y: Float,
+        z: Float,
+        centerX: Float,
+        centerY: Float,
+        scale: Float
+    ): FloatArray {
+        val cy = cos(yaw)
+        val sy = sin(yaw)
+        val x1 = x * cy - z * sy
+        val z1 = x * sy + z * cy
+
+        val cp = cos(pitch)
+        val sp = sin(pitch)
+        val y1 = y * cp - z1 * sp
+        val z2 = y * sp + z1 * cp
+
+        val focal = 3.1f
+        val perspective = focal / max(0.35f, focal - z2 * 0.85f)
+
+        return floatArrayOf(
+            centerX + x1 * scale * perspective,
+            centerY + y1 * scale * perspective,
+            z2
+        )
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+
+        val width = width.toFloat()
+        val height = height.toFloat()
+        if (width <= 0f || height <= 0f) return
+
+        val centerX = width * 0.5f
+        val centerY = height * 0.5f
+        val base = min(width, height) * 0.31f * zoom
+
+        val projected = Array(nodes.size) {
+            val node = nodes[it]
+            project(node.x, node.y, node.z, centerX, centerY, base)
         }
 
-        labelPaint.color = 0xFFB8ADA5.toInt()
-        c.drawText(
-            "${positions.size} endpoints · ${records.size} links · concepts $concepts",
-            10f * d, height - 24f * d, labelPaint
-        )
-        c.drawText(
-            "Stored associations; not cloud-model internals.",
-            10f * d, height - 9f * d, labelPaint
-        )
+        val breath = 0.5f + 0.5f * sin(time * 1.7f)
+        val energy = 0.16f + activity * 0.84f
+
+        for (i in links.indices) {
+            val link = links[i]
+            val a = projected[link.a]
+            val b = projected[link.b]
+
+            val depth = (a[2] + b[2]) * 0.5f
+            val near = (1f - (depth + 1.1f) / 2.2f).coerceIn(0.10f, 1f)
+
+            val alpha = (18f + 62f * energy * near + 24f * breath).toInt()
+                .coerceIn(0, 190)
+
+            linkPaint.color = Color.argb(alpha, 90, 190, 255)
+            linkPaint.strokeWidth = 1.1f + 1.7f * energy * near
+            canvas.drawLine(a[0], a[1], b[0], b[1], linkPaint)
+        }
+
+        for (pulse in pulses) {
+            if (pulse.link >= links.size) continue
+            val link = links[pulse.link]
+            val a = projected[link.a]
+            val b = projected[link.b]
+
+            val x = a[0] + (b[0] - a[0]) * pulse.t
+            val y = a[1] + (b[1] - a[1]) * pulse.t
+            val fade = (1f - abs(pulse.t - 0.5f) * 2f).coerceIn(0f, 1f)
+            val radius = 2.2f + 4.6f * fade * (0.55f + activity)
+
+            pulsePaint.color = pulse.color
+            pulsePaint.alpha = (55f + 180f * fade * (0.45f + activity)).toInt()
+                .coerceIn(0, 255)
+            canvas.drawCircle(x, y, radius, pulsePaint)
+        }
+
+        for (i in nodes.indices) {
+            val node = nodes[i]
+            val point = projected[i]
+            val depth = point[2]
+            val near = (1f - (depth + 1.1f) / 2.2f).coerceIn(0.12f, 1f)
+
+            val wave = 0.5f + 0.5f * sin(
+                time * 2.1f + node.layer * 0.55f + i * 0.22f
+            )
+
+            val radius = (2.0f + 3.2f * near) *
+                (0.82f + 0.20f * wave + 0.42f * activity)
+
+            val hue = 190f + node.layer * 16f + wave * 22f
+            val color = Color.HSVToColor(
+                floatArrayOf(hue % 360f, 0.72f, 1f)
+            )
+
+            glowPaint.shader = RadialGradient(
+                point[0],
+                point[1],
+                radius * 3.4f,
+                Color.argb((90f * near * energy).toInt(), 120, 220, 255),
+                Color.argb(0, 120, 220, 255),
+                Shader.TileMode.CLAMP
+            )
+            canvas.drawCircle(point[0], point[1], radius * 3.4f, glowPaint)
+
+            nodePaint.color = color
+            nodePaint.alpha = (95f + 145f * near * energy).toInt().coerceIn(0, 255)
+            canvas.drawCircle(point[0], point[1], radius, nodePaint)
+        }
     }
 }
