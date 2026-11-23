@@ -39,7 +39,7 @@ class BrainView(context: Context) : View(context), SensorEventListener {
     private var tiltYaw = 0f
     private var tiltPitch = 0f
 
-    private var activity = 0.18f
+    private var activity = 0.34f
     private var time = 0f
     private var running = false
     private var sensorsOn = false
@@ -238,7 +238,7 @@ class BrainView(context: Context) : View(context), SensorEventListener {
         yaw += (tiltYaw - yaw * 0.06f) * 0.02f
         pitch += (tiltPitch - pitch * 0.06f) * 0.02f
 
-        activity = max(0.16f, activity * 0.986f)
+        activity = max(0.34f, activity * 0.988f)
 
         val iterator = pulses.iterator()
         while (iterator.hasNext()) {
@@ -247,7 +247,7 @@ class BrainView(context: Context) : View(context), SensorEventListener {
             if (pulse.t > 1f) iterator.remove()
         }
 
-        if (activity > 0.30f && random.nextFloat() < activity * 0.20f && links.isNotEmpty()) {
+        if (activity > 0.30f && random.nextFloat() < activity * 0.34f && links.isNotEmpty()) {
             pulses.add(
                 Pulse(
                     random.nextInt(links.size),
@@ -302,7 +302,7 @@ class BrainView(context: Context) : View(context), SensorEventListener {
 
         val centerX = width * 0.5f
         val centerY = height * 0.5f
-        val base = min(width, height) * 0.31f * zoom
+        val base = min(width, height) * 0.40f * zoom
 
         val projected = Array(nodes.size) {
             val node = nodes[it]
@@ -324,7 +324,7 @@ class BrainView(context: Context) : View(context), SensorEventListener {
                 .coerceIn(0, 190)
 
             linkPaint.color = Color.argb(alpha, 90, 190, 255)
-            linkPaint.strokeWidth = 1.1f + 1.7f * energy * near
+            linkPaint.strokeWidth = 1.4f + 2.3f * energy * near
             canvas.drawLine(a[0], a[1], b[0], b[1], linkPaint)
         }
 
@@ -337,7 +337,7 @@ class BrainView(context: Context) : View(context), SensorEventListener {
             val x = a[0] + (b[0] - a[0]) * pulse.t
             val y = a[1] + (b[1] - a[1]) * pulse.t
             val fade = (1f - abs(pulse.t - 0.5f) * 2f).coerceIn(0f, 1f)
-            val radius = 2.2f + 4.6f * fade * (0.55f + activity)
+            val radius = 2.7f + 5.8f * fade * (0.65f + activity)
 
             pulsePaint.color = pulse.color
             pulsePaint.alpha = (55f + 180f * fade * (0.45f + activity)).toInt()
@@ -355,8 +355,8 @@ class BrainView(context: Context) : View(context), SensorEventListener {
                 time * 2.1f + node.layer * 0.55f + i * 0.22f
             )
 
-            val radius = (2.0f + 3.2f * near) *
-                (0.82f + 0.20f * wave + 0.42f * activity)
+            val radius = (2.4f + 4.0f * near) *
+                (0.92f + 0.28f * wave + 0.55f * activity)
 
             val hue = 190f + node.layer * 16f + wave * 22f
             val color = Color.HSVToColor(

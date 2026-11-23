@@ -184,7 +184,7 @@ class MainActivity : Activity() {
         root.addView(line, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)))
         brain = BrainView(this)
         brain.visibility = View.GONE
-        root.addView(brain, LinearLayout.LayoutParams(MATCH_PARENT, dp(240)))
+        root.addView(brain, LinearLayout.LayoutParams(MATCH_PARENT, dp(330)))
 
         // messages, with a "jump to latest" button
         val holder = FrameLayout(this)
