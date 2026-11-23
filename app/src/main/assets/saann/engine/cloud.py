@@ -164,23 +164,56 @@ def complete(prompt, max_tokens=300, schema=None, temperature=0.3, system="You a
 
 def test(name):
     k = keys().get(name)
+
     if not k:
         return "no key saved yet"
+
     try:
         text, mid = _call(
-            name, k, "Reply with the single word: ready",
-            1024, None, 0.0, "Reply briefly."
+            name,
+            k,
+            "Reply with the single word: ready",
+            1024,
+            None,
+            0.0,
+            "Reply briefly."
         )
+
         if not text:
-            return "the provider responded but returned no final text"
-        s = state(); s["cool"].pop(name, None); _save_state(s)
-        return "working (%s)" % mid
+            return (
+                name + ": the provider responded but returned no final text"
+            )
+
+        s = state()
+        s["cool"].pop(name, None)
+        _save_state(s)
+
+        return "working (" + mid + ")"
+
     except urllib.error.HTTPError as e:
-        return {401: "the key was rejected", 403: "the key was rejected or lacks access",
-                404: "that model name was not found (try /cloud model %s NAME)" % name,
-                429: "limit reached for now"}.get(e.code, "the provider answered with error %d" % e.code)
-    except Exception:
-        return "could not reach the internet"
+        detail = ""
+
+        try:
+            detail = e.read().decode("utf-8", "ignore")[:500]
+        except Exception:
+            pass
+
+        s = state()
+
+        if e.code in (401, 403):
+            s["cool"][name] = time.time() + 3600
+        elif e.code in (429, 500, 502, 503):
+            s["cool"][name] = time.time() + COOLDOWN
+
+        _save_state(s)
+
+        return (
+            name + " authentication/request failed (HTTP " + str(e.code) +
+            "): " + (detail or "no additional detail from the provider")
+        )
+
+    except Exception as e:
+        return name + " connection failed: " + str(e)
 
 
 def _clipboard():
