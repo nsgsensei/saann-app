@@ -610,6 +610,15 @@ tick = _safe(lambda: get().tick())
 snapshot_json = _safe(lambda: json.dumps(get().snapshot()))
 
 def command(msg):
+    low = msg.strip().lower()
+
+    if low.startswith("/plan") or low.startswith("/tasks") or low.startswith("/task"):
+        from engine import planner
+        result = planner.command(msg)
+
+        if result is not None:
+            return result
+
     """Chat commands. Returns text, or None if msg is not a brain command."""
     m = msg.strip()
     low = m.lower()

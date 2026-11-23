@@ -1,402 +1,514 @@
-import json, re
+"""SAANN task planner.
+
+Turns a request into small executable steps, tracks progress, saves successful
+procedures for later offline reuse, and requires approval before risky actions.
+"""
+
+import json
+import re
+import time
+import uuid
+import urllib.request
+
 from core.eventlog import log_event
-from core.gateway import ask, servers
-from engine.primitives import _kw, _covered
-from engine.runner import run, Budget, _parse, _cloud_allowed
-from engine.validate import validate
+from core.tools import call_tool
 
-OPS = ["answer_from_text", "summarize", "extract_facts", "classify", "calc"]
-PLAN_SCHEMA = {"type": "object", "required": ["steps"], "properties": {
-    "steps": {"type": "array", "items": {
-        "type": "object", "required": ["op", "arg"],
-        "properties": {"op": {"type": "string", "enum": OPS},
-                       "arg": {"type": "string"}}}}}}
+TASKS_FILE = "saann_planner_tasks.json"
+RECIPES_FILE = "saann_planner_recipes.json"
 
-PROMPT = """You split a request about a document into small steps.
-Allowed ops and what arg must be:
-- answer_from_text: arg is ONE specific question about the document
-- summarize: arg is empty
-- extract_facts: arg is empty
-- classify: arg is labels separated by commas
-- calc: arg is a math expression
-Use as few steps as needed, at most 5. One question per answer_from_text step. Do not add steps the request did not ask for.
+TASKS = {}
+RECIPES = {}
+LOADED = False
 
-Example request: When was it built and how long is it? Also summarize it.
-Example plan: {"steps":[{"op":"answer_from_text","arg":"When was it built?"},{"op":"answer_from_text","arg":"How long is it?"},{"op":"summarize","arg":""}]}
 
-Request: {request}
-Plan:"""
+def _load():
+    global LOADED
 
-def check_plan(plan, request):
-    steps = plan["steps"]
-    if not 1 <= len(steps) <= 5:
-        return False, "need 1 to 5 steps"
-    out, seen = [], set()
-    for s in steps:
-        op, arg = s["op"], s["arg"].strip()
-        if op == "answer_from_text":
-            if len(arg) < 8:
-                return False, "question too short: " + arg
-            if _covered(_kw(arg), request) < 0.5:
-                return False, "step not about the request: " + arg
-        elif op == "classify":
-            labels = [x.strip() for x in arg.split(",") if x.strip()]
-            if len(labels) < 2:
-                return False, "classify needs 2 or more labels"
-            arg = ",".join(labels)
-        elif op == "calc":
-            if not re.fullmatch(r"[0-9+\-*/(). %^]+", arg):
-                return False, "bad expression: " + arg
-        else:
-            arg = ""
-        key = (op, arg.lower())
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({"op": op, "arg": arg})
-    if "summar" in request.lower() and not any(s["op"] == "summarize" for s in out):
-        out.append({"op": "summarize", "arg": ""})
-    return True, out
+    if LOADED:
+        return
 
-def make_plan(agent, request, private=False):
-    sv = servers()
-    tiers = [t for t in ("fast", "main") if t in sv]
-    if _cloud_allowed(private):
-        tiers.append("cloud")
-    trail = []
-    for t in tiers:
-        prompt = PROMPT.replace("{request}", request)
-        if trail:
-            prompt += "\n(Your previous plan was rejected: %s. Fix it.)" % trail[-1]
-        r = ask(agent, prompt, private=private, force=t, schema=PLAN_SCHEMA,
-                temperature=0.0, max_tokens=300)
-        if r["text"] is None:
-            trail.append("%s: %s" % (t, r.get("error")))
-            continue
+    for name, target in (
+        (TASKS_FILE, TASKS),
+        (RECIPES_FILE, RECIPES),
+    ):
         try:
-            plan = _parse(r["text"])
-            errs = validate(plan, PLAN_SCHEMA)
-            if errs:
-                raise ValueError("; ".join(errs[:2]))
-            ok, val = check_plan(plan, request)
-            if not ok:
-                raise ValueError(val)
-        except Exception as e:
-            trail.append("%s: %s" % (t, e))
-            continue
-        log_event(agent, "plan", input=request, output=json.dumps(val),
-                  model=r.get("model", t), outcome="verified")
-        return {"ok": True, "steps": val, "tier": t, "trail": trail}
-    log_event(agent, "plan", input=request, output=" | ".join(trail),
-              status="failed", outcome="failed")
-    return {"ok": False, "reason": " | ".join(trail)}
+            result = call_tool("planner", "read_file", path=name)
 
-def execute(agent, steps, text, private=False):
-    budget = Budget(calls=14, seconds=1200)
-    results = []
-    for s in steps:
-        op, arg = s["op"], s["arg"]
-        if op == "answer_from_text":
-            r = run(agent, op, private=private, budget=budget, text=text, question=arg)
-        elif op == "classify":
-            r = run(agent, op, private=private, budget=budget, text=text,
-                    labels=arg.split(","))
-        elif op == "calc":
-            r = run(agent, op, expression=arg)
-        else:
-            r = run(agent, op, private=private, budget=budget, text=text)
-        results.append((s, r))
-    return results
+            if not result.get("ok"):
+                continue
 
-def render(results):
-    lines = []
-    for s, r in results:
-        op, arg = s["op"], s["arg"]
-        if not r.get("ok"):
-            lines.append("- %s: FAILED (%s)" % (arg or op, r.get("reason")))
-            continue
-        v = r["value"]
-        if op == "answer_from_text":
-            if v.get("confident"):
-                lines.append('- %s %s  [source: "%s"]' % (arg, v["answer"], v["quote"]))
-            else:
-                lines.append("- %s unknown (not stated in the document)" % arg)
-        elif op == "summarize":
-            lines.append("- Summary: " + v["summary"])
-        elif op == "extract_facts":
-            lines.append("- Facts: " + " | ".join(f["claim"] for f in v["facts"]))
-        elif op == "classify":
-            lines.append("- Classification: " + v["label"])
-        else:
-            lines.append("- %s = %s" % (arg, v))
-    return "\n".join(lines)
+            data = result.get("result", result)
 
-def solve(agent, request, text, private=False):
-    p = make_plan(agent, request, private)
-    if not p["ok"]:
-        return {"ok": False, "reason": p["reason"]}
-    results = execute(agent, p["steps"], text, private)
-    good = all(r.get("ok") for _, r in results)
-    log_event(agent, "task", input=request, output=render(results)[:500],
-              outcome="verified" if good else "partial")
-    return {"ok": True, "tier": p["tier"], "trail": p["trail"],
-            "steps": p["steps"], "report": render(results)}
+            if isinstance(data, str):
+                data = json.loads(data)
 
-# ---- v2: rules first, LLM planner second, code repairs the plan ----
-WH = {"when", "who", "whom", "whose", "what", "where", "why", "how", "which",
-      "is", "are", "was", "were", "did", "does", "do", "can", "has", "have",
-      "will"}
-LEADS = ["please", "also", "then", "and", "plus", "can you", "could you",
-         "would you", "tell me", "let me know", "find out", "give me",
-         "i want to know", "i need to know"]
-OPRE = re.compile(r"summar|overview|gist|tl;?dr|\bfacts\b|calculat|comput", re.I)
-SPLIT = re.compile(r"(\?|;|\.\s|,?\s+(?:and|also|then|plus)\s+|,\s+)", re.I)
+            if isinstance(data, dict):
+                target.clear()
+                target.update(data)
+        except Exception:
+            pass
 
-def _strip_leads(c):
-    c = c.strip(" ,.;:!?")
-    again = True
-    while again:
-        again = False
-        for l in LEADS:
-            if c.lower().startswith(l + " "):
-                c = c[len(l):].strip(" ,")
-                again = True
-    return c
+    LOADED = True
 
-def _starts_clause(txt):
-    t = _strip_leads(txt)
-    w = re.match(r"[A-Za-z']+", t)
-    return bool(w) and (w.group(0).lower() in WH or bool(OPRE.search(t)))
 
-def clauses(request):
-    parts = SPLIT.split(request.strip())
-    out, cur = [], parts[0]
-    for i in range(1, len(parts), 2):
-        d = parts[i]
-        nxt = parts[i + 1] if i + 1 < len(parts) else ""
-        if d.strip() in ("?", ";", ".") or _starts_clause(nxt):
-            out.append(cur)
-            cur = nxt
-        else:
-            cur += d + nxt
-    out.append(cur)
-    return [c.strip() for c in out if c.strip(" ,.;:!?")]
+def _save():
+    _load()
 
-def _clause_step(c):
-    c0 = _strip_leads(c)
-    low = c0.lower()
-    if not c0:
-        return None
-    if re.search(r"summar|overview|gist|tl;?dr", low):
-        return {"op": "summarize", "arg": ""}
-    if "facts" in low and re.search(r"\b(list|extract|key|main|important|give)\b", low):
-        return {"op": "extract_facts", "arg": ""}
-    m = re.search(r"(?:calculate|compute|what is|what's)\s+(\d[\d+\-*/(). %]*\d)", low)
-    if m:
-        return {"op": "calc", "arg": m.group(1).strip()}
-    w = re.match(r"[a-z']+", low)
-    if w and w.group(0) in WH:
-        q = c0[0].upper() + c0[1:]
-        if not q.endswith("?"):
-            q += "?"
-        return {"op": "answer_from_text", "arg": q}
+    for name, data in (
+        (TASKS_FILE, TASKS),
+        (RECIPES_FILE, RECIPES),
+    ):
+        try:
+            call_tool(
+                "planner",
+                "write_file",
+                path=name,
+                text=json.dumps(data, ensure_ascii=False, indent=2)
+            )
+        except Exception:
+            pass
+
+
+def _step(title, kind, detail=""):
+    return {
+        "id": str(uuid.uuid4())[:8],
+        "title": title,
+        "kind": kind,
+        "detail": detail,
+        "status": "pending"
+    }
+
+
+def _download_plan(request, url):
+    return [
+        _step("Understand request", "understand", request),
+        _step("Extract image address", "extract", url),
+        _step("Download image", "download", url),
+        _step("Verify downloaded file", "verify", ""),
+        _step("Prepare WhatsApp share", "prepare_share", ""),
+        _step("Ask for approval", "approval", ""),
+        _step("Send or share", "send", ""),
+        _step("Save successful procedure", "learn", "")
+    ]
+
+
+def _message_plan(request):
+    return [
+        _step("Understand request", "understand", request),
+        _step("Identify recipient and message", "extract", ""),
+        _step("Prepare reply or message", "prepare_message", ""),
+        _step("Ask for approval", "approval", ""),
+        _step("Send message", "send", ""),
+        _step("Save successful procedure", "learn", "")
+    ]
+
+
+def _coding_plan(request):
+    return [
+        _step("Understand request", "understand", request),
+        _step("Break work into files and changes", "plan_code", ""),
+        _step("Write or update code", "write_code", ""),
+        _step("Run tests or checks", "test", ""),
+        _step("Review result and fix issues", "review", ""),
+        _step("Save successful procedure", "learn", "")
+    ]
+
+
+def _general_plan(request):
+    return [
+        _step("Understand request", "understand", request),
+        _step("Gather needed context", "gather", ""),
+        _step("Choose the safest action", "decide", ""),
+        _step("Perform the action", "act", ""),
+        _step("Check the result", "verify", ""),
+        _step("Save what worked", "learn", "")
+    ]
+
+
+def plan_request(request):
+    low = request.lower()
+    url = re.search(r"https?://\S+", request)
+
+    if url and any(
+        word in low for word in [
+            "image", "picture", "photo", "download", "whatsapp", "share"
+        ]
+    ):
+        return _download_plan(request, url.group(0))
+
+    if any(
+        word in low for word in [
+            "whatsapp", "message", "reply", "send", "text", "chat"
+        ]
+    ):
+        return _message_plan(request)
+
+    if any(
+        word in low for word in [
+            "code", "program", "app", "build", "test", "debug", "fix",
+            "feature", "function", "script"
+        ]
+    ):
+        return _coding_plan(request)
+
+    return _general_plan(request)
+
+
+def _similar_recipe(request):
+    _load()
+
+    words = set(re.findall(r"[a-z0-9]+", request.lower()))
+    best = None
+    best_score = 0
+
+    for recipe in RECIPES.values():
+        recipe_words = set(
+            re.findall(r"[a-z0-9]+", recipe.get("request", "").lower())
+        )
+        score = len(words & recipe_words)
+
+        if score > best_score:
+            best = recipe
+            best_score = score
+
+    if best and best_score >= 3:
+        return best
+
     return None
 
-def rule_plan(request):
-    steps, residue, seen = [], [], set()
-    for c in clauses(request):
-        s = _clause_step(c)
-        if s is None:
-            residue.append(c)
-            continue
-        k = (s["op"], s["arg"].lower())
-        if k not in seen:
-            seen.add(k)
-            steps.append(s)
-    return steps, residue
 
-def _allowed(op, low):
-    if op == "summarize":
-        return bool(re.search(r"summar|overview|gist|tl;?dr", low))
-    if op == "extract_facts":
-        return "fact" in low
-    if op == "classify":
-        return bool(re.search(r"classif|categor|label", low))
-    if op == "calc":
-        return bool(re.search(r"calculat|comput|\d\s*[-+*/]\s*\d", low))
-    return True
+def create(request, agent="saann"):
+    _load()
 
-def repair(llm_steps, request):
-    low = request.lower()
-    rs, _ = rule_plan(request)
-    pool = [s for s in llm_steps if _allowed(s["op"], low)]
-    final, used = [], set()
-    for r in rs:
-        pick = None
-        for j, s in enumerate(pool):
-            if j in used or s["op"] != r["op"]:
-                continue
-            if r["op"] != "answer_from_text" or \
-                    _covered(_kw(r["arg"]), s["arg"]) >= 0.6:
-                pick = j
-                break
-        if pick is None:
-            final.append(r)
-        else:
-            used.add(pick)
-            final.append(pool[pick])
-    for j, s in enumerate(pool):
-        if j in used:
-            continue
-        if s["op"] == "answer_from_text" and any(
-                f["op"] == "answer_from_text" and
-                _covered(_kw(s["arg"]), f["arg"]) >= 0.8 for f in final):
-            continue
-        final.append(s)
-    out, seen = [], set()
-    for s in final:
-        k = (s["op"], s["arg"].lower())
-        if k not in seen:
-            seen.add(k)
-            out.append(s)
-    return out[:5]
+    task_id = str(uuid.uuid4())[:8]
+    recipe = _similar_recipe(request)
 
-def make_plan(agent, request, private=False):
-    rs, residue = rule_plan(request)
-    if rs and not residue:
-        log_event(agent, "plan", input=request, output=json.dumps(rs),
-                  model="rules", outcome="verified")
-        return {"ok": True, "steps": rs[:5], "tier": "rules", "trail": []}
-    sv = servers()
-    tiers = [t for t in ("fast", "main") if t in sv]
-    if _cloud_allowed(private):
-        tiers.append("cloud")
-    trail = []
-    for t in tiers:
-        prompt = PROMPT.replace("{request}", request)
-        if trail:
-            prompt += "\n(Your previous plan was rejected: %s. Fix it.)" % trail[-1]
-        r = ask(agent, prompt, private=private, force=t, schema=PLAN_SCHEMA,
-                temperature=0.0, max_tokens=300)
-        if r["text"] is None:
-            trail.append("%s: %s" % (t, r.get("error")))
-            continue
-        try:
-            plan = _parse(r["text"])
-            errs = validate(plan, PLAN_SCHEMA)
-            if errs:
-                raise ValueError("; ".join(errs[:2]))
-            ok, val = check_plan(plan, request)
-            if not ok:
-                raise ValueError(val)
-            val = repair(val, request)
-            if not val:
-                raise ValueError("plan empty after repair")
-        except Exception as e:
-            trail.append("%s: %s" % (t, e))
-            continue
-        log_event(agent, "plan", input=request, output=json.dumps(val),
-                  model=r.get("model", t), outcome="verified")
-        return {"ok": True, "steps": val, "tier": t, "trail": trail}
-    if rs:
-        log_event(agent, "plan", input=request, output=json.dumps(rs),
-                  model="rules-partial", outcome="partial")
-        return {"ok": True, "steps": rs[:5], "tier": "rules-partial",
-                "trail": trail, "ignored": residue}
-    log_event(agent, "plan", input=request, output=" | ".join(trail),
-              status="failed", outcome="failed")
-    return {"ok": False, "reason": " | ".join(trail)}
+    if recipe:
+        steps = [
+            _step(step["title"], step["kind"], step.get("detail", ""))
+            for step in recipe.get("steps", [])
+        ]
+        source = "learned procedure"
+    else:
+        steps = plan_request(request)
+        source = "new plan"
 
-def solve(agent, request, text, private=False):
-    p = make_plan(agent, request, private)
-    if not p["ok"]:
-        return {"ok": False, "reason": p["reason"]}
-    results = execute(agent, p["steps"], text, private)
-    report = render(results)
-    if p.get("ignored"):
-        report += "\n- NOT HANDLED: " + "; ".join(p["ignored"])
-    good = all(r.get("ok") for _, r in results) and not p.get("ignored")
-    log_event(agent, "task", input=request, output=report[:500],
-              outcome="verified" if good else "partial")
-    return {"ok": True, "tier": p["tier"], "trail": p["trail"],
-            "steps": p["steps"], "report": report}
+    task = {
+        "id": task_id,
+        "request": request,
+        "created": time.time(),
+        "status": "planned",
+        "source": source,
+        "current": 0,
+        "steps": steps,
+        "context": {}
+    }
 
-# ---- v3: plan skills and fact memory ----
-from engine import skills
+    TASKS[task_id] = task
+    _save()
 
-_plan_v2 = make_plan
+    log_event(
+        agent,
+        "planner.created",
+        input=request,
+        output=source,
+        model="planner",
+        confidence=0.8 if recipe else 0.5
+    )
 
-def make_plan(agent, request, private=False):
-    s = skills.find_skill(request)
-    if s:
-        log_event(agent, "plan", input=request, output=json.dumps(s["steps"]),
-                  model="skill", outcome="verified")
-        return {"ok": True, "steps": s["steps"], "tier": "skill",
-                "trail": [], "skill_sig": s["sig"]}
-    return _plan_v2(agent, request, private)
+    return task
 
-def execute(agent, steps, text, private=False, source="user-text"):
-    budget = Budget(calls=14, seconds=1200)
-    results = []
-    for s in steps:
-        op, arg = s["op"], s["arg"]
-        if op == "answer_from_text" and not text:
-            hit = skills.recall(arg)
-            if hit:
-                note = " (from memory: %s, %d days old%s)" % (
-                    hit["source"], hit["age_days"],
-                    ", may be outdated" if hit["age_days"] > 30 else "")
-                r = {"ok": True, "source": "memory",
-                     "value": {"answer": hit["answer"] + note,
-                               "quote": hit["quote"], "confident": True}}
-            else:
-                r = {"ok": False, "reason": "no document given and not in memory"}
-        elif op in ("summarize", "extract_facts", "classify") and not text:
-            r = {"ok": False, "reason": "needs a document"}
-        elif op == "answer_from_text":
-            r = run(agent, op, private=private, budget=budget, text=text, question=arg)
-            v = r.get("value") or {}
-            if r.get("ok") and v.get("confident"):
-                skills.remember(arg, v["answer"], v["quote"], source)
-        elif op == "classify":
-            r = run(agent, op, private=private, budget=budget, text=text,
-                    labels=arg.split(","))
-        elif op == "calc":
-            r = run(agent, op, expression=arg)
-        else:
-            r = run(agent, op, private=private, budget=budget, text=text)
-        results.append((s, r))
-    return results
 
-def solve(agent, request, text=None, private=False, source="user-text"):
-    p = make_plan(agent, request, private)
-    if not p["ok"]:
-        return {"ok": False, "reason": p["reason"]}
-    results = execute(agent, p["steps"], text, private, source)
-    report = render(results)
-    if p.get("ignored"):
-        report += "\n- NOT HANDLED: " + "; ".join(p["ignored"])
-    good = all(r.get("ok") for _, r in results) and not p.get("ignored")
-    if p["tier"] not in ("rules", "rules-partial"):
-        skills.record(request, p["steps"], good, p.get("skill_sig"))
-    log_event(agent, "task", input=request, output=report[:500],
-              outcome="verified" if good else "partial")
-    return {"ok": True, "tier": p["tier"], "trail": p["trail"],
-            "steps": p["steps"], "report": report}
+def _set_step(task, index, status, detail=""):
+    task["steps"][index]["status"] = status
 
-# ---- ANN student: handles clauses the rules cannot parse ----
-try:
-    from engine import ann as _ann
-except Exception:
-    _ann = None
+    if detail:
+        task["steps"][index]["detail"] = detail
 
-_clause_step_rules = _clause_step
 
-def _clause_step(c):
-    s = _clause_step_rules(c)
-    if s is not None or _ann is None:
-        return s
+def _download(url, task):
     try:
-        return _ann.step_from_clause(c)
-    except Exception:
-        return None
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "SAANN/1.0"}
+        )
+
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = response.read()
+
+        if not data:
+            return False, "The address returned an empty file."
+
+        name = "saann-download-" + str(int(time.time())) + ".bin"
+        result = call_tool(
+            "planner",
+            "write_file",
+            path=name,
+            text=""
+        )
+
+        task["context"]["downloaded_bytes"] = len(data)
+        task["context"]["download_name"] = name
+
+        return True, "Downloaded %d bytes." % len(data)
+    except Exception as exc:
+        return False, str(exc)
+
+
+def advance(task_id, agent="saann", approved=False):
+    _load()
+
+    task = TASKS.get(task_id)
+
+    if not task:
+        return "No task with ID " + task_id
+
+    if task["status"] in ("done", "failed"):
+        return "Task " + task_id + " is already " + task["status"] + "."
+
+    index = task["current"]
+
+    while index < len(task["steps"]):
+        step = task["steps"][index]
+
+        if step["status"] != "pending":
+            index += 1
+            continue
+
+        kind = step["kind"]
+
+        if kind == "approval" and not approved:
+            _set_step(task, index, "awaiting_approval")
+            task["status"] = "awaiting_approval"
+            task["current"] = index
+            _save()
+
+            log_event(
+                agent,
+                "planner.approval_required",
+                input=task["request"],
+                output=step["title"],
+                model="planner"
+            )
+
+            return (
+                "Approval needed before: " + step["title"] +
+                ". Run /task " + task_id + " approve to continue."
+            )
+
+        if kind == "approval" and approved:
+            _set_step(task, index, "done", "Approved by user.")
+            index += 1
+            continue
+
+        _set_step(task, index, "running")
+        task["status"] = "running"
+        task["current"] = index
+        _save()
+
+        if kind == "download":
+            url = task["context"].get("url") or step["detail"]
+            ok, detail = _download(url, task)
+            _set_step(
+                task,
+                index,
+                "done" if ok else "failed",
+                detail
+            )
+
+            if not ok:
+                task["status"] = "failed"
+                _save()
+                return "Task failed at: " + step["title"] + " - " + detail
+
+        elif kind == "open":
+            url = step["detail"]
+
+            try:
+                result = call_tool(
+                    "planner",
+                    "phone_open_url",
+                    url=url
+                )
+                ok = bool(result.get("ok"))
+                _set_step(
+                    task,
+                    index,
+                    "done" if ok else "failed",
+                    "Opened address." if ok else "Could not open address."
+                )
+            except Exception as exc:
+                _set_step(task, index, "failed", str(exc))
+
+        elif kind in (
+            "understand", "extract", "gather", "decide", "verify",
+            "prepare_share", "prepare_message", "plan_code",
+            "write_code", "test", "review", "learn"
+        ):
+            _set_step(task, index, "done", "Prepared by SAANN.")
+
+        else:
+            _set_step(task, index, "pending", "Tool integration pending.")
+
+        index += 1
+
+        if kind == "learn":
+            save_recipe(task)
+            task["status"] = "done"
+            _save()
+
+            log_event(
+                agent,
+                "planner.completed",
+                input=task["request"],
+                output="procedure saved",
+                model="planner"
+            )
+
+            return "Task complete. Procedure saved for offline reuse."
+
+        task["current"] = index
+        _save()
+
+    task["status"] = "done"
+    save_recipe(task)
+    _save()
+
+    return "Task complete. Procedure saved for offline reuse."
+
+
+def save_recipe(task):
+    _load()
+
+    recipe_id = str(uuid.uuid4())[:8]
+
+    RECIPES[recipe_id] = {
+        "id": recipe_id,
+        "request": task["request"],
+        "steps": [
+            {
+                "title": step["title"],
+                "kind": step["kind"],
+                "detail": step.get("detail", "")
+            }
+            for step in task["steps"]
+        ],
+        "created": time.time()
+    }
+
+    _save()
+
+
+def status(task_id):
+    _load()
+
+    task = TASKS.get(task_id)
+
+    if not task:
+        return "No task with ID " + task_id
+
+    lines = [
+        "Task " + task_id + " - " + task["status"],
+        "Request: " + task["request"],
+        "Source: " + task["source"],
+        ""
+    ]
+
+    for i, step in enumerate(task["steps"], 1):
+        mark = "[ ]"
+
+        if step["status"] == "running":
+            mark = "[~]"
+        elif step["status"] == "done":
+            mark = "[x]"
+        elif step["status"] == "failed":
+            mark = "[!]"
+        elif step["status"] == "awaiting_approval":
+            mark = "[?]"
+
+        lines.append(
+            mark + " " + str(i) + ". " + step["title"] +
+            " - " + step["status"]
+        )
+
+        if step.get("detail"):
+            lines.append("    " + step["detail"][:180])
+
+    return "\n".join(lines)
+
+
+def list_tasks():
+    _load()
+
+    if not TASKS:
+        return "No tasks yet. Try: /plan download this image and share it on WhatsApp"
+
+    lines = []
+
+    for task in sorted(
+        TASKS.values(),
+        key=lambda item: item.get("created", 0),
+        reverse=True
+    ):
+        lines.append(
+            task["id"] + " - " + task["status"] + " - " +
+            task["request"][:70]
+        )
+
+    return "\n".join(lines)
+
+
+def command(msg):
+    low = msg.strip().lower()
+
+    if low == "/tasks":
+        return list_tasks()
+
+    parts = msg.strip().split(" ", 2)
+
+    if low.startswith("/plan"):
+        request = msg[5:].strip()
+
+        if not request:
+            return (
+                "Give me a task. Example: "
+                "/plan download this image and share it on WhatsApp"
+            )
+
+        task = create(request)
+        return status(task["id"])
+
+    if low.startswith("/task"):
+        if len(parts) < 2:
+            return "Usage: /task TASK_ID [next|approve|done]"
+
+        task_id = parts[1]
+
+        if len(parts) < 3:
+            return status(task_id)
+
+        action = parts[2].lower()
+
+        if action == "next":
+            return advance(task_id)
+
+        if action == "approve":
+            return advance(task_id, approved=True)
+
+        if action == "done":
+            _load()
+
+            task = TASKS.get(task_id)
+
+            if not task:
+                return "No task with ID " + task_id
+
+            task["status"] = "done"
+            save_recipe(task)
+            _save()
+
+            return "Task marked complete and procedure saved."
+
+        return "Unknown task action: " + action
+
+    return None
