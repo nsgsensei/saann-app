@@ -648,10 +648,15 @@ def _expand_step(step, task):
 
 
 def _is_actionable(text):
-    if _QUESTION.match(text.strip()):
-        return False
-
-    return bool(_ACTION.search(text))
+    # Temporary safety gate: ordinary chat, app commands, questions, and
+    # single-step phone actions must reach SAANN's existing brain and tools.
+    #
+    # Automatic task creation will return only after a proper contextual
+    # router can distinguish:
+    #   - simple commands: "open accessibility settings"
+    #   - questions: "what is this setting?"
+    #   - real multi-step work: "download this image and share it"
+    return False
 
 
 def _natural_status(task):
