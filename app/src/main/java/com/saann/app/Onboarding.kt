@@ -137,6 +137,59 @@ object Onboarding {
             return e
         }
 
+        fun preview(path: String, status: TextView) {
+            if (path.isBlank()) return
+
+            try {
+                val options = android.graphics.BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                android.graphics.BitmapFactory.decodeFile(path, options)
+
+                val target = dp(240)
+                var sample = 1
+
+                while (
+                    options.outWidth / (sample * 2) >= target &&
+                    options.outHeight / (sample * 2) >= target
+                ) {
+                    sample *= 2
+                }
+
+                val load = android.graphics.BitmapFactory.Options().apply {
+                    inSampleSize = sample
+                }
+
+                val bitmap =
+                    android.graphics.BitmapFactory.decodeFile(path, load)
+
+                if (bitmap == null) {
+                    status.setTextColor(RED)
+                    status.text = "Could not display the generated image."
+                    return
+                }
+
+                val image = android.widget.ImageView(a)
+                image.setImageBitmap(bitmap)
+                image.scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                image.background = GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(PANEL)
+                    setStroke(dp(1), 0x55FF7A18)
+                }
+
+                val lp = LinearLayout.LayoutParams(-1, dp(240))
+                lp.topMargin = dp(12)
+                box.addView(image, lp)
+
+                status.setTextColor(ORANGE)
+                status.text = "Image generated. Preview shown below."
+            } catch (e: Exception) {
+                status.setTextColor(RED)
+                status.text = "Could not display the generated image."
+            }
+        }
+
         fun request(
             operation: String,
             payload: JSONObject,
@@ -276,7 +329,14 @@ object Onboarding {
                                 status.text = "Test the current credentials first."
                                 status.setTextColor(RED)
                             } else {
-                                request("image_test", JSONObject(), status) { }
+                                request("image_test", JSONObject(), status) { result ->
+                                if (result.optBoolean("ok")) {
+                                    preview(
+                                        result.optString("path"),
+                                        status
+                                    )
+                                }
+                            }
                             }
                         }
                     }

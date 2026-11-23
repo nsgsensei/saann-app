@@ -1002,7 +1002,12 @@ def _dispatch(intent, msg):
     if intent == "recall_last":
         return _self_layer("what did i just tell you")
     if intent == "identity":
-        return _self_layer("who are you")
+        return (
+            "I'm SAANN, an assistant made by Ascension Publishing Inc., "
+            "a company led by its CEO, Sensei, and currently expanding. "
+            "I think with my own learning core and use language models "
+            "when they help. I am software, not a person."
+        )
     if intent == "name":
         return "My name is %s." % _persona_name()
     if intent == "feel":

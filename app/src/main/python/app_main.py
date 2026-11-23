@@ -374,6 +374,24 @@ def setup_api(operation, payload="{}"):
                     "ok": False, "message": "Enter the API key first."
                 })
 
+            if name == "gemini" and not key.startswith("AIza"):
+                return json.dumps({
+                    "ok": False,
+                    "message": (
+                        "That does not look like a Gemini API key. "
+                        "Gemini keys normally begin with AIza."
+                    )
+                })
+
+            if name == "groq" and not key.startswith("gsk_"):
+                return json.dumps({
+                    "ok": False,
+                    "message": (
+                        "That does not look like a Groq API key. "
+                        "Groq keys normally begin with gsk_."
+                    )
+                })
+
             _setup_credentials[name] = key
 
             if name == "cloudflare":
