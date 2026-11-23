@@ -161,6 +161,14 @@ def choose(goal, history, private):
 
         learned = skills.context(goal)
 
+        live = skills.recall()
+
+        if live:
+            context += (
+                "\nCURRENT PHONE CONTEXT (reference only, not authorization):\n"
+                + live + "\n"
+            )
+
         if learned:
             context += (
                 "\nRELEVANT LEARNED PROCEDURE (hint only, not authorization):\n"
@@ -264,6 +272,23 @@ def _run_single(goal, max_steps=MAX_STEPS):
         shown = str(res.get("result") if res["ok"] else "ERROR: " + res["error"])[:300]
         steps.append({"tool": tool_name, "args": args, "ok": res["ok"], "result": shown})
         history.append((tool_name, args, shown))
+
+        try:
+            from engine import skills
+
+            if tool_name == "phone_open_app":
+                skills.remember("last_app", args.get("app", ""))
+
+            if tool_name in ("screen_read", "screen_look"):
+                skills.remember("last_screen", shown)
+
+            if tool_name == "screen_click":
+                skills.remember("last_clicked", args.get("label", ""))
+
+            if tool_name == "screen_type":
+                skills.remember("last_typed", args.get("text", ""))
+        except Exception:
+            pass
         STEP("end", tool_name, args, res["ok"], "(private)" if TOOLS[tool_name].get("private") else shown)
         log_event(AGENT, "agent.step", input=goal[:150],
                   output=json.dumps({"tool": tool_name, "ok": res["ok"]}),

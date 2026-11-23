@@ -7,6 +7,7 @@ import time
 from core.tools import call_tool
 
 SKILLS_FILE = "saann_agent_skills.json"
+CONTEXT_FILE = "saann_agent_context.json"
 SKILLS = {}
 LOADED = False
 
@@ -131,3 +132,69 @@ def save(goal, steps):
     }
 
     _save()
+
+
+CONTEXT = {}
+CONTEXT_LOADED = False
+
+
+def _load_context():
+    global CONTEXT_LOADED
+
+    if CONTEXT_LOADED:
+        return
+
+    try:
+        result = call_tool("skills", "read_file", path=CONTEXT_FILE)
+
+        if result.get("ok"):
+            data = result.get("result", result)
+
+            if isinstance(data, str):
+                data = json.loads(data)
+
+            if isinstance(data, dict):
+                CONTEXT.clear()
+                CONTEXT.update(data)
+    except Exception:
+        pass
+
+    CONTEXT_LOADED = True
+
+
+def _save_context():
+    _load_context()
+
+    try:
+        call_tool(
+            "skills",
+            "write_file",
+            path=CONTEXT_FILE,
+            text=json.dumps(CONTEXT, ensure_ascii=False, indent=2)
+        )
+    except Exception:
+        pass
+
+
+def remember(key, value):
+    _load_context()
+
+    if not key or value in (None, ""):
+        return
+
+    CONTEXT[key] = str(value)[:1200]
+    _save_context()
+
+
+def recall():
+    _load_context()
+
+    if not CONTEXT:
+        return ""
+
+    lines = []
+
+    for key, value in CONTEXT.items():
+        lines.append("- " + key + ": " + value[:500])
+
+    return "\n".join(lines)
