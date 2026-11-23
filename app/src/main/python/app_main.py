@@ -79,6 +79,18 @@ def respond(msg):
         fast = _fast(msg)
         if fast is not None:
             return fast
+
+        try:
+            from engine import agent
+
+            if agent.wants_phone(msg):
+                result = agent.run(msg)
+
+                if result and result.get("answer"):
+                    return result["answer"]
+        except Exception:
+            pass
+
     import saann
     return saann.respond(msg, _state)
 

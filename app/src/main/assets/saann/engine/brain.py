@@ -661,16 +661,6 @@ def _nudge(b, last, good=0.0, bad=0.0):
 
 def _listen(b, text):
     t = text.strip()
-
-    try:
-        from engine import planner
-
-        routed = planner.observe(t)
-
-        if routed:
-            return routed
-    except Exception:
-        pass
     if not t or t.startswith("/"):
         return None
     with b.lock:
