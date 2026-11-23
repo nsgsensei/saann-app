@@ -60,7 +60,7 @@ object Attach {
             name = name.replace(Regex("[^A-Za-z0-9._-]"), "_").takeLast(60)
             val dir = File(act.filesDir, "saann/data/uploads")
             dir.mkdirs()
-            dir.listFiles()?.sortedBy { it.lastModified() }?.dropLast(19)?.forEach { it.delete() }
+            // Preserve uploaded files referenced by saved conversations.
             val f = File(dir, System.currentTimeMillis().toString() + "-" + name)
             act.contentResolver.openInputStream(uri)?.use { i -> f.outputStream().use { o -> i.copyTo(o) } }
                 ?: return null
@@ -116,7 +116,7 @@ object Attach {
 
 // ---------------- brain detail screen ----------------
 object BrainDetail {
-    private const val BG = 0xFF05090F.toInt()
+    private const val BG = 0xFF080808.toInt()
     private const val PANEL = 0xFF151515.toInt()
     private const val CYAN = 0xFFFF7A18.toInt()
     private const val INK = 0xFFFAF7F2.toInt()
@@ -227,6 +227,102 @@ object BrainDetail {
                 if (parts.isNotEmpty()) line(sum, parts.joinToString(" · "), 12f, DIM)
             }
             body.addView(sum)
+
+            // SAANN_DETAIL_ASSOCIATIONS_V7
+            val snapshot = o.optJSONObject("association_snapshot")
+            if (snapshot != null) {
+                val associations = card()
+                line(
+                    associations,
+                    "LEARNED ASSOCIATIONS",
+                    11f, DIM, true
+                )
+
+                val links = snapshot.optJSONArray("links")
+                if (links == null || links.length() == 0) {
+                    line(
+                        associations,
+                        "No learned links reported yet.",
+                        13f, INK
+                    )
+                } else {
+                    for (i in 0 until minOf(40, links.length())) {
+                        val item = links.optJSONObject(i) ?: continue
+                        val weight = String.format(
+                            Locale.US, "%.2f", item.optDouble("w")
+                        )
+                        line(
+                            associations,
+                            item.optString("a") + " ↔ " +
+                                item.optString("b") +
+                                " · weight " + weight,
+                            12f, INK
+                        )
+                    }
+                }
+
+                line(
+                    associations,
+                    "Stored association strength is not factual certainty.",
+                    11f, DIM
+                )
+                body.addView(associations)
+
+                val eventsCard = card()
+                line(
+                    eventsCard,
+                    "RECENT BRAIN EVENTS",
+                    11f, DIM, true
+                )
+
+                val events = snapshot.optJSONArray("events")
+                if (events == null || events.length() == 0) {
+                    line(
+                        eventsCard,
+                        "No recent events reported.",
+                        13f, INK
+                    )
+                } else {
+                    val oldest = maxOf(0, events.length() - 20)
+                    for (i in events.length() - 1 downTo oldest) {
+                        val item = events.optJSONObject(i) ?: continue
+                        val senses = item.optJSONArray("senses")
+                        val sensoryNames = ArrayList<String>()
+                        if (senses != null) {
+                            for (j in 0 until senses.length()) {
+                                sensoryNames.add(senses.optString(j))
+                            }
+                        }
+                        val suffix = if (item.optBoolean("new")) {
+                            " · new association"
+                        } else {
+                            ""
+                        }
+                        line(
+                            eventsCard,
+                            item.optString("label", "event") +
+                                " · " +
+                                sensoryNames.joinToString(", ") +
+                                suffix,
+                            12f, INK
+                        )
+                    }
+                }
+                body.addView(eventsCard)
+            } else {
+                val unavailable = card()
+                line(
+                    unavailable,
+                    "Association details unavailable",
+                    13f, INK
+                )
+                line(
+                    unavailable,
+                    "The engine did not include an association snapshot.",
+                    12f, DIM
+                )
+                body.addView(unavailable)
+            }
 
             val regs = o.optJSONArray("regions")
             if (regs != null) {

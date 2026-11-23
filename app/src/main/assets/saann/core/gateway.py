@@ -46,7 +46,10 @@ def _cloud(prompt, max_tokens, schema, temperature):
         pass
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
-        raise RuntimeError("no ANTHROPIC_API_KEY set")
+        raise RuntimeError(
+            "No configured cloud provider returned a usable answer. "
+            "Run /cloud test for provider diagnostics."
+        )
     if schema:
         prompt += "\n\nReply with ONLY valid JSON matching this schema:\n" + json.dumps(schema)
     m = models.get(models.load()["active_cloud"])
@@ -80,12 +83,13 @@ def ask(agent, prompt, task_type="general", private=False, hard=False,
     elif force:
         order = [force]
     elif mode == "cloud":
-        order = ["cloud", "local"]
+        # SAANN_CLOUD_ONLY_V8
+        order = ["cloud"]
     else:
         order = ["cloud", "local"] if hard else ["local", "cloud"]
     if models.cap_reached():
-        order = [o for o in order if o != "cloud"] or ["local"]
-    err = None
+        order = [o for o in order if o != "cloud"]
+    err = "Cloud usage cap reached." if not order else None
     for src in order:
         try:
             if src == "local":

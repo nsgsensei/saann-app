@@ -448,3 +448,46 @@ def setup_api(operation, payload="{}"):
             )
 
         return json.dumps({"ok": False, "message": message})
+
+
+# SAANN_CONVERSATION_BOUNDARY_V5
+_android_inner_respond = respond
+
+
+def respond(msg):
+    from engine.conversation import run
+    return run(msg, _android_inner_respond)
+
+
+# SAANN_SESSION_ENTRY_V6
+def respond_chat(message, session_id, history_json):
+    from engine.conversation import run
+    return run(
+        message,
+        _android_inner_respond,
+        session_id=str(session_id),
+        history=str(history_json)
+    )
+
+
+# SAANN_DETAIL_SNAPSHOT_V7
+_original_detail_view = brain_view
+
+
+def brain_view():
+    import json
+    from engine import brain
+
+    try:
+        report = json.loads(_original_detail_view())
+        if not isinstance(report, dict):
+            report = {"error": "Unexpected detail response"}
+    except Exception:
+        report = {"error": "Could not load the detailed brain report"}
+
+    try:
+        report["association_snapshot"] = brain.get().snapshot()
+    except Exception:
+        report["association_snapshot_error"] = "Snapshot unavailable"
+
+    return json.dumps(report)

@@ -31,6 +31,30 @@ object Host {
         "error: " + (e.message ?: e.toString())
     }
 
+    // SAANN_SESSION_HOST_V6
+    fun respondChat(
+        text: String,
+        sessionId: String,
+        historyJson: String,
+        done: (String) -> Unit
+    ) {
+        Thread {
+            val result = try {
+                val engine = py
+                if (engine == null) {
+                    "SAANN is still starting. Please try again shortly."
+                } else {
+                    engine.callAttr(
+                        "respond_chat", text, sessionId, historyJson
+                    ).toString()
+                }
+            } catch (e: Throwable) {
+                "The chat request failed. Please retry. If it persists, check the build and engine logs."
+            }
+            done(result)
+        }.start()
+    }
+
     fun snapshot(): String = try {
         py?.callAttr("brain_snapshot")?.toString() ?: "{}"
     } catch (e: Throwable) {

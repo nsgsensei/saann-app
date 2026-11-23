@@ -71,9 +71,7 @@ def _respond_core(msg, st):
     if r == "phone":
         return agent.run(msg)["answer"]
     if r == "chat":
-        hit = brain.first(msg)
-        if hit:
-            return hit
+        # Recalled answers inform context, not an immediate reply.
         ans = brain.refine(msg, mind.chat(msg))
         brain.learn(msg, ans)
         return ans

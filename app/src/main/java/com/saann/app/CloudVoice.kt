@@ -190,13 +190,14 @@ object CloudVoice {
             val b = Button(a)
             b.text = value
             b.isAllCaps = false
+            b.textSize = 14f
             b.setTextColor(INK)
             b.background = GradientDrawable().apply {
                 setColor(PANEL)
                 cornerRadius = dp(14).toFloat()
                 setStroke(dp(1), ORANGE)
             }
-            val lp = LinearLayout.LayoutParams(-1, dp(54))
+            val lp = LinearLayout.LayoutParams(-1, dp(48))
             lp.topMargin = dp(12)
             box.addView(b, lp)
             b.setOnClickListener { if (!busy) action() }

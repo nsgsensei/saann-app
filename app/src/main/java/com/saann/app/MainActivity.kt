@@ -127,12 +127,12 @@ class MainActivity : Activity() {
         val head = LinearLayout(this)
         head.orientation = LinearLayout.HORIZONTAL
         head.gravity = Gravity.CENTER_VERTICAL
-        head.setPadding(dp(10), dp(10), dp(12), dp(10))
+        head.setPadding(dp(10), dp(6), dp(10), dp(6))
         orb = OrbView(this)
         val menu = IconView(this, "menu", INK)
         menu.setOnClickListener { openRecents() }
         head.addView(menu, LinearLayout.LayoutParams(dp(34), dp(34)))
-        head.addView(orb, LinearLayout.LayoutParams(dp(42), dp(42)))
+        head.addView(orb, LinearLayout.LayoutParams(dp(32), dp(32)))
         orb.setOnClickListener { toggleBrain() }
         val col = LinearLayout(this)
         col.orientation = LinearLayout.VERTICAL
@@ -140,7 +140,7 @@ class MainActivity : Activity() {
         val title = TextView(this)
         title.text = "SAANN"
         title.setTextColor(INK)
-        title.textSize = 18f
+        title.textSize = 17f
         title.letterSpacing = 0.12f
         title.setTypeface(title.typeface, Typeface.BOLD)
         status = TextView(this)
@@ -342,6 +342,12 @@ class MainActivity : Activity() {
                 return@setOnClickListener
             }
             if (!ready || busy) return@setOnClickListener
+            input.clearFocus()
+            val keyboard = getSystemService(
+                android.content.Context.INPUT_METHOD_SERVICE
+            ) as android.view.inputmethod.InputMethodManager
+            keyboard.hideSoftInputFromWindow(input.windowToken, 0)
+            scroll.postDelayed({ scrollDown() }, 180)
             send.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
             if (pending.any { !it.ready }) {
                 Toast.makeText(this, "Still reading the attachment...", Toast.LENGTH_SHORT).show()
@@ -349,6 +355,7 @@ class MainActivity : Activity() {
             }
             val t = if (pending.isEmpty()) t0 else Attach.compose(t0, pending)
             val shown = if (pending.isEmpty()) t0 else (if (t0.isEmpty()) "" else t0 + "\n") + "📎 " + pending.joinToString(", ") { it.name }
+            val outgoingAttachments = pending.toList()
             pending.clear()
             refreshChips()
             input.setText("")
@@ -368,6 +375,14 @@ class MainActivity : Activity() {
                 return@setOnClickListener
             }
             addMsg(shown, true)
+            rememberAttachments(outgoingAttachments)
+            for (attachment in outgoingAttachments) {
+                val preview = attachmentCard(attachment, false)
+                val lp = preview.layoutParams as LinearLayout.LayoutParams
+                lp.gravity = Gravity.END
+                preview.layoutParams = lp
+                place(preview, true)
+            }
             if (t.startsWith("/bar")) {
                 addMsg(BarPrefs.command(this, t), false, false)
                 return@setOnClickListener
@@ -376,7 +391,10 @@ class MainActivity : Activity() {
             setBusy(true)
             setStatus("Working...")
             showTyping()
-            Host.respond(t) { r ->
+            // SAANN_SESSION_SEND_V6
+            val requestSessionId = ChatStore.currentId(this)
+            val requestHistory = hist.toString()
+            Host.respondChat(t, requestSessionId, requestHistory) { r ->
                 runOnUiThread {
                     hideTyping()
                     finishCard()
@@ -408,9 +426,25 @@ class MainActivity : Activity() {
     private fun addReply(r: String) {
         val rx = Regex("\\[image: (.+?)\\]")
         val paths = rx.findAll(r).map { it.groupValues[1] }.toList()
-        val clean = r.replace(rx, "").replace(Regex("\n{3,}"), "\n\n").trim()
-        if (clean.isNotEmpty()) addMsg(clean, false)
-        for (p in paths) addImage(p)
+        val clean = r.replace(rx, "")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+
+        if (clean.isNotEmpty() || paths.isNotEmpty()) {
+            addMsg(
+                if (clean.isNotEmpty()) clean else "Generated image",
+                false
+            )
+
+            if (paths.isNotEmpty() && hist.length() > 0) {
+                val images = JSONArray()
+                for (path in paths) images.put(path)
+                hist.optJSONObject(hist.length() - 1)?.put("images", images)
+                saveHistoryMetadata()
+            }
+        }
+
+        for (path in paths) addImage(path)
     }
 
     private fun addImage(path: String) {
@@ -548,26 +582,38 @@ class MainActivity : Activity() {
     }
 
     // ---------- messages ----------
+    // SAANN_CHAT_EXPERIENCE_V3
     private fun bubble(text: String, mine: Boolean): TextView {
         val tv = TextView(this)
         tv.text = text
         tv.setTextColor(if (mine) INK else BODY)
-        tv.textSize = 15f
+        tv.textSize = 16f
+        tv.setLineSpacing(dp(3).toFloat(), 1.05f)
         tv.setTextIsSelectable(true)
-        tv.maxWidth = (resources.displayMetrics.widthPixels * 0.82f).toInt()
-        tv.setPadding(dp(14), dp(10), dp(14), dp(10))
-        val r = dp(18).toFloat()
-        val s = dp(4).toFloat()
-        val g = GradientDrawable()
-        g.cornerRadii = if (mine) floatArrayOf(r, r, r, r, s, s, r, r) else floatArrayOf(r, r, r, r, r, r, s, s)
-        g.setColor(if (mine) 0xFF4A2114.toInt() else PANEL)
-        g.setStroke(dp(1), if (mine) 0xFFB84A24.toInt() else 0x33FFFFFF)
-        tv.background = g
-        val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
+
+        val lp = LinearLayout.LayoutParams(
+            if (mine) WRAP_CONTENT else MATCH_PARENT,
+            WRAP_CONTENT
+        )
         lp.gravity = if (mine) Gravity.END else Gravity.START
-        lp.topMargin = dp(5)
-        lp.bottomMargin = dp(5)
+        lp.topMargin = dp(if (mine) 10 else 14)
+        lp.bottomMargin = dp(4)
+
+        if (mine) {
+            tv.maxWidth = (resources.displayMetrics.widthPixels * 0.86f).toInt()
+            tv.setPadding(dp(14), dp(10), dp(14), dp(10))
+            tv.background = GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                setColor(0xFF241A15.toInt())
+                setStroke(dp(1), 0x55FF7A18)
+            }
+        } else {
+            tv.setPadding(dp(4), dp(4), dp(4), dp(8))
+            tv.background = null
+        }
         tv.layoutParams = lp
+        // SAANN_REPLY_STYLE_V10
+        if (!mine) ReplyStyle.apply(tv, text)
         return tv
     }
 
@@ -604,10 +650,82 @@ class MainActivity : Activity() {
                 val o = a.getJSONObject(i)
                 chat.addView(bubble(o.getString("t"), o.getBoolean("m")))
                 chat.addView(actions(o.getString("t"), o.getBoolean("m")))
+                restoreRichItems(o)
                 hist.put(o)
             }
             scrollDown()
         } catch (e: Exception) {
+        }
+    }
+
+    // SAANN_RICH_HISTORY_V10
+    private fun saveHistoryMetadata() {
+        try {
+            val f = histFile()
+            f.parentFile?.mkdirs()
+            f.writeText(hist.toString())
+        } catch (_: Exception) {
+            Toast.makeText(
+                this, "Could not save attachment history",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    private fun rememberAttachments(list: List<Attachment>) {
+        if (list.isEmpty() || hist.length() == 0) return
+        val item = hist.optJSONObject(hist.length() - 1) ?: return
+        if (!item.optBoolean("m")) return
+
+        val records = JSONArray()
+        for (a in list) {
+            records.put(
+                JSONObject()
+                    .put("name", a.name)
+                    .put("path", a.path)
+                    .put("kind", a.kind)
+            )
+        }
+        item.put("attachments", records)
+        saveHistoryMetadata()
+    }
+
+    private fun restoreRichItems(item: JSONObject) {
+        val records = item.optJSONArray("attachments")
+        if (records != null) {
+            for (i in 0 until records.length()) {
+                val record = records.optJSONObject(i) ?: continue
+                val path = record.optString("path")
+                if (!File(path).isFile) {
+                    val missing = TextView(this)
+                    missing.text = "Attachment unavailable: " +
+                        record.optString("name")
+                    missing.setTextColor(DIM)
+                    missing.textSize = 12f
+                    chat.addView(missing)
+                    continue
+                }
+
+                val attachment = Attachment(
+                    record.optString("name"),
+                    path,
+                    record.optString("kind", "file")
+                )
+                attachment.ready = true
+                val preview = attachmentCard(attachment, false)
+                val lp = preview.layoutParams as LinearLayout.LayoutParams
+                lp.gravity = Gravity.END
+                preview.layoutParams = lp
+                chat.addView(preview)
+            }
+        }
+
+        val images = item.optJSONArray("images")
+        if (images != null) {
+            for (i in 0 until images.length()) {
+                val path = images.optString(i)
+                if (File(path).isFile) addImage(path)
+            }
         }
     }
 
@@ -883,29 +1001,71 @@ class MainActivity : Activity() {
         return b
     }
 
+    private fun attachmentCard(a: Attachment, compact: Boolean): View {
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(dp(8), dp(8), dp(8), dp(8))
+        box.background = GradientDrawable().apply {
+            cornerRadius = dp(14).toFloat()
+            setColor(0xFF151515.toInt())
+            setStroke(dp(1), 0x55FF7A18)
+        }
+
+        val width = dp(if (compact) 148 else 248)
+
+        if (a.kind == "image") {
+            val bitmap = decode(a.path, if (compact) 240 else 640)
+            if (bitmap != null) {
+                val image = ImageView(this)
+                image.setImageBitmap(bitmap)
+                image.scaleType = ImageView.ScaleType.CENTER_CROP
+                box.addView(
+                    image,
+                    LinearLayout.LayoutParams(
+                        MATCH_PARENT,
+                        dp(if (compact) 88 else 164)
+                    )
+                )
+            }
+        }
+
+        val label = TextView(this)
+        label.text = (
+            if (a.ready) "" else "Processing · "
+        ) + a.name
+        label.textSize = 12f
+        label.setTextColor(0xFFFAF7F2.toInt())
+        label.maxLines = 2
+        label.ellipsize = android.text.TextUtils.TruncateAt.END
+        label.setPadding(dp(3), dp(7), dp(3), dp(3))
+        box.addView(label)
+
+        val lp = LinearLayout.LayoutParams(width, WRAP_CONTENT)
+        lp.rightMargin = dp(8)
+        lp.topMargin = dp(6)
+        lp.bottomMargin = dp(6)
+        box.layoutParams = lp
+
+        box.setOnClickListener {
+            if (compact) {
+                Previewer.show(
+                    this, a.name, a.path, a.kind, a.text
+                ) {
+                    pending.remove(a)
+                    refreshChips()
+                    updateAction()
+                }
+            } else {
+                Previewer.showFile(this, File(a.path))
+            }
+        }
+        return box
+    }
+
     private fun refreshChips() {
         chips.removeAllViews()
         for (a in pending.toList()) {
-            val c = TextView(this)
-            c.text = (if (a.ready) "📎 " else "… ") + a.name.take(24)
-            c.setTextColor(BODY)
-            c.textSize = 12f
-            c.setPadding(dp(12), dp(6), dp(12), dp(6))
-            val g = GradientDrawable()
-            g.cornerRadius = dp(14).toFloat()
-            g.setColor(PANEL)
-            g.setStroke(dp(1), 0x33FFFFFF)
-            c.background = g
-            c.setOnClickListener {
-                Previewer.show(this, a.name, a.path, a.kind, a.text) {
-                    pending.remove(a)
-                    refreshChips()
-                }
-            }
-            val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
-            lp.rightMargin = dp(6)
-            lp.topMargin = dp(4)
-            chips.addView(c, lp)
+            chips.addView(attachmentCard(a, true))
         }
     }
 

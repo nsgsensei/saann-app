@@ -282,7 +282,7 @@ def wrap(fn):
             return fn(msg, *a, **k)
         out = _run(fn, msg, a, k)
         try:
-            return polish(msg, out)
+            return out  # Preserve the original answer and its formatting.
         except Exception:
             return out
     w._jarvis = True

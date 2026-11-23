@@ -52,9 +52,13 @@ def run(agent, name, private=False, budget=None, **inputs):
         inp = spec["prep"](inp)
     schema = spec["schema"](inp) if callable(spec["schema"]) else spec["schema"]
     base = spec["prompt"].format(**inp)
-    attempts = [("local", 0.2), ("local", 0.0)]
-    if _cloud_allowed(private):
-        attempts.append(("cloud", 0.0))
+    mode = models.load().get("mode", "local")
+    if mode == "cloud" and not private:
+        attempts = [("cloud", 0.0)] if _cloud_allowed(private) else []
+    else:
+        attempts = [("local", 0.2), ("local", 0.0)]
+        if _cloud_allowed(private):
+            attempts.append(("cloud", 0.0))
     reason = ""
     history = []
     soft = None

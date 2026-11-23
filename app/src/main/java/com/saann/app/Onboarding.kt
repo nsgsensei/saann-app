@@ -94,13 +94,18 @@ object Onboarding {
             val b = Button(a)
             b.text = label
             b.isAllCaps = false
-            b.setTextColor(if (primary) BG else INK)
+            b.textSize = 14f
+            b.setTextColor(
+                if (label.contains("provider", ignoreCase = true))
+                    0xFF78AFFF.toInt()
+                else if (primary) BG else INK
+            )
             b.background = GradientDrawable().apply {
                 cornerRadius = dp(16).toFloat()
                 setColor(if (primary) ORANGE else PANEL)
                 setStroke(dp(1), if (primary) ORANGE else 0x55FF7A18)
             }
-            val lp = LinearLayout.LayoutParams(-1, dp(54))
+            val lp = LinearLayout.LayoutParams(-1, dp(48))
             lp.topMargin = dp(12)
             box.addView(b, lp)
             b.setOnClickListener {

@@ -51,6 +51,9 @@ class BrainView(ctx: Context) : View(ctx) {
     private var pitch = 0.25f
     private var lastX = 0f
     private var lastY = 0f
+    // SAANN_LEARNED_GRAPH_V7
+    private var learnedMode = true
+    private var latestSnapshot = JSONObject()
     private var concepts = 0
     private var novelty = 0f
     private var left = 0f
@@ -73,7 +76,7 @@ class BrainView(ctx: Context) : View(ctx) {
     }
 
     init {
-        setBackgroundColor(0xFF04070C.toInt())
+        setBackgroundColor(0xFF080808.toInt())
         for (n in pos.keys) ensure(n)
     }
 
@@ -138,6 +141,7 @@ class BrainView(ctx: Context) : View(ctx) {
     private fun take(json: String) {
         try {
             val o = JSONObject(json)
+            latestSnapshot = o
             val arr = o.optJSONArray("nodes")
             if (arr != null) {
                 for (i in 0 until arr.length()) {
@@ -169,6 +173,11 @@ class BrainView(ctx: Context) : View(ctx) {
     override fun onTouchEvent(ev: MotionEvent): Boolean {
         when (ev.action) {
             MotionEvent.ACTION_DOWN -> {
+                if (ev.y < 36f * d) {
+                    learnedMode = !learnedMode
+                    invalidate()
+                    return true
+                }
                 parent?.requestDisallowInterceptTouchEvent(true)
                 lastX = ev.x
                 lastY = ev.y
@@ -187,12 +196,16 @@ class BrainView(ctx: Context) : View(ctx) {
 
     private fun colorOf(name: String): Int = when {
         name == "language" -> 0xFFFF7A18.toInt()
-        name == "visual" || name == "color" -> 0xFFB47AFF.toInt()
-        name in hubs -> 0xFFFFC857.toInt()
-        else -> 0xFF00E5A0.toInt()
+        name == "visual" || name == "color" -> 0xFF78AFFF.toInt()
+        name in hubs -> 0xFFFF7A18.toInt()
+        else -> 0xFFFF442B.toInt()
     }
 
     override fun onDraw(c: Canvas) {
+        if (learnedMode) {
+            drawLearned(c)
+            return
+        }
         val w = width.toFloat()
         val h = height.toFloat()
         val cx = w / 2f
@@ -271,7 +284,115 @@ class BrainView(ctx: Context) : View(ctx) {
 
         text.color = 0xFFB8ADA5.toInt()
         text.alpha = 230
-        c.drawText("BRAIN   concepts $concepts   novelty ${"%.2f".format(novelty)}", 10f * d, 16f * d, text)
+        c.drawText("REGIONS · schematic · tap header to switch", 10f * d, 16f * d, text)
         c.drawText("L ${"%.2f".format(left)}   R ${"%.2f".format(right)}   drag to rotate", 10f * d, h - 8f * d, text)
+    }
+
+    private fun drawLearned(c: Canvas) {
+        val links = latestSnapshot.optJSONArray("links")
+        val names = LinkedHashSet<String>()
+        val records = ArrayList<Triple<String, String, Float>>()
+
+        if (links != null) {
+            for (i in 0 until minOf(40, links.length())) {
+                val item = links.optJSONObject(i) ?: continue
+                val a = item.optString("a")
+                val b = item.optString("b")
+                val weight = item.optDouble("w", 0.0).toFloat()
+                if (a.isBlank() || b.isBlank() || !weight.isFinite()) continue
+                names.add(a)
+                names.add(b)
+                records.add(Triple(a, b, weight))
+            }
+        }
+
+        val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFB8ADA5.toInt()
+            textSize = 10f * resources.displayMetrics.scaledDensity
+        }
+
+        c.drawText(
+            "LEARNED ASSOCIATIONS · tap header to switch",
+            10f * d, 18f * d, labelPaint
+        )
+
+        if (names.isEmpty()) {
+            labelPaint.color = 0xFFFAF7F2.toInt()
+            c.drawText(
+                "No learned links reported yet.",
+                14f * d, height / 2f, labelPaint
+            )
+            return
+        }
+
+        val positions = LinkedHashMap<String, Pair<Float, Float>>()
+        val sortedNames = names.sorted()
+        val cx = width / 2f
+        val cy = height / 2f
+        val rx = maxOf(12f * d, width * 0.34f)
+        val ry = maxOf(12f * d, (height - 90f * d) * 0.40f)
+
+        for ((index, name) in sortedNames.withIndex()) {
+            val angle = index * Math.PI * 2.0 / sortedNames.size
+            positions[name] = Pair(
+                cx + cos(angle).toFloat() * rx,
+                cy + sin(angle).toFloat() * ry
+            )
+        }
+
+        val maxWeight = maxOf(
+            0.001f,
+            records.maxOfOrNull { kotlin.math.abs(it.third) } ?: 1f
+        )
+
+        for ((a, b, weight) in records) {
+            val start = positions[a] ?: continue
+            val end = positions[b] ?: continue
+            val strength = (
+                kotlin.math.abs(weight) / maxWeight
+            ).coerceIn(0f, 1f)
+
+            line.color = 0xFF78AFFF.toInt()
+            line.alpha = (45 + strength * 165).toInt()
+            line.strokeWidth = (0.6f + strength * 2.0f) * d
+            c.drawLine(
+                start.first, start.second,
+                end.first, end.second, line
+            )
+        }
+
+        val showAllLabels = positions.size <= 18
+        for ((index, entry) in positions.entries.withIndex()) {
+            val name = entry.key
+            val point = entry.value
+            fill.color = 0xFFFF7A18.toInt()
+            fill.alpha = 255
+            c.drawCircle(point.first, point.second, 3.5f * d, fill)
+
+            if (showAllLabels || index % 3 == 0) {
+                labelPaint.color = 0xFFFAF7F2.toInt()
+                val caption = name.take(18)
+                val tx = (
+                    point.first - labelPaint.measureText(caption) / 2f
+                ).coerceIn(
+                    4f * d,
+                    maxOf(
+                        4f * d,
+                        width - labelPaint.measureText(caption) - 4f * d
+                    )
+                )
+                c.drawText(caption, tx, point.second - 7f * d, labelPaint)
+            }
+        }
+
+        labelPaint.color = 0xFFB8ADA5.toInt()
+        c.drawText(
+            "${positions.size} endpoints · ${records.size} links · concepts $concepts",
+            10f * d, height - 24f * d, labelPaint
+        )
+        c.drawText(
+            "Stored associations; not cloud-model internals.",
+            10f * d, height - 9f * d, labelPaint
+        )
     }
 }
