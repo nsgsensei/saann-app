@@ -36,19 +36,32 @@ def _local(prompt, max_tokens, schema, temperature, tier="main"):
                  body, {"Content-Type": "application/json"})
     return data["choices"][0]["message"]["content"].strip(), cfg["model"]
 
-def _cloud(prompt, max_tokens, schema, temperature):
+def _cloud_diagnostics():
     try:
         from engine import cloud
-        r = cloud.complete(prompt, max_tokens, schema, temperature, SYSTEM)
-        if r:
-            return r
-    except Exception:
-        pass
+
+        result = cloud.complete(
+            prompt,
+            max_tokens,
+            schema,
+            temperature,
+            SYSTEM
+        )
+
+        if result:
+            return result
+
+        reason = _cloud_diagnostics()
+    except Exception as exc:
+        reason = str(exc) or exc.__class__.__name__
+
     key = os.environ.get("ANTHROPIC_API_KEY")
+
     if not key:
         raise RuntimeError(
-            "No configured cloud provider returned a usable answer. "
-            "Run /cloud test for provider diagnostics."
+            "Cloud providers unavailable. "
+            + reason
+            + " Run /cloud test for provider diagnostics."
         )
     if schema:
         prompt += "\n\nReply with ONLY valid JSON matching this schema:\n" + json.dumps(schema)
