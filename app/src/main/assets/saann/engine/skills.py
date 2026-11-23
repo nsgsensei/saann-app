@@ -1,73 +1,133 @@
-import json, time
-from core.eventlog import _conn
-from engine.primitives import _kw
+"""SAANN skill memory: remembers successful phone procedures for reuse."""
 
-def _db():
-    c = _conn()
-    c.execute("CREATE TABLE IF NOT EXISTS skills(sig TEXT PRIMARY KEY, "
-              "request TEXT, steps TEXT, successes INTEGER, failures INTEGER, "
-              "created REAL, used REAL)")
-    c.execute("CREATE TABLE IF NOT EXISTS facts(qkey TEXT, question TEXT, "
-              "answer TEXT, quote TEXT, source TEXT, ts REAL, times INTEGER, "
-              "PRIMARY KEY(qkey, source))")
-    return c
+import json
+import re
+import time
 
-def _sig(text):
-    return " ".join(sorted(_kw(text)))
+from core.tools import call_tool
 
-def _jac(a, b):
-    a, b = set(a), set(b)
-    return len(a & b) / len(a | b) if (a | b) else 0.0
+SKILLS_FILE = "saann_agent_skills.json"
+SKILLS = {}
+LOADED = False
 
-def trust(s, f):
-    return (s + 1) / (s + f + 2)
 
-def find_skill(request):
-    k = _kw(request)
-    best = None
-    with _db() as c:
-        rows = c.execute("SELECT sig, steps, successes, failures FROM skills").fetchall()
-    for sig, steps, s, f in rows:
-        sim = _jac(k, sig.split())
-        if sim >= 0.85 and trust(s, f) >= 0.6 and (best is None or sim > best[0]):
-            best = (sim, sig, json.loads(steps))
-    return {"sig": best[1], "steps": best[2]} if best else None
+def _load():
+    global LOADED
 
-def record(request, steps, ok, sig=None):
-    sig = sig or _sig(request)
-    now = time.time()
-    with _db() as c:
-        row = c.execute("SELECT successes, failures FROM skills WHERE sig=?",
-                        (sig,)).fetchone()
-        if row:
-            c.execute("UPDATE skills SET successes=?, failures=?, used=? WHERE sig=?",
-                      (row[0] + (1 if ok else 0), row[1] + (0 if ok else 1), now, sig))
-        elif ok:
-            c.execute("INSERT INTO skills VALUES (?,?,?,?,?,?,?)",
-                      (sig, request, json.dumps(steps), 1, 0, now, now))
-
-def remember(question, answer, quote, source):
-    k = _sig(question)
-    if len(k.split()) < 2:
+    if LOADED:
         return
-    with _db() as c:
-        c.execute("INSERT INTO facts VALUES (?,?,?,?,?,?,1) "
-                  "ON CONFLICT(qkey, source) DO UPDATE SET answer=excluded.answer, "
-                  "quote=excluded.quote, ts=excluded.ts, times=times+1",
-                  (k, question, answer, quote, source, time.time()))
 
-def recall(question):
-    k = _kw(question)
-    if len(k) < 2:
-        return None
-    with _db() as c:
-        rows = c.execute("SELECT qkey, answer, quote, source, ts FROM facts").fetchall()
+    try:
+        result = call_tool("skills", "read_file", path=SKILLS_FILE)
+
+        if result.get("ok"):
+            data = result.get("result", result)
+
+            if isinstance(data, str):
+                data = json.loads(data)
+
+            if isinstance(data, dict):
+                SKILLS.clear()
+                SKILLS.update(data)
+    except Exception:
+        pass
+
+    LOADED = True
+
+
+def _save():
+    _load()
+
+    try:
+        call_tool(
+            "skills",
+            "write_file",
+            path=SKILLS_FILE,
+            text=json.dumps(SKILLS, ensure_ascii=False, indent=2)
+        )
+    except Exception:
+        pass
+
+
+def _words(text):
+    return set(re.findall(r"[a-z0-9]+", (text or "").lower()))
+
+
+def find(goal):
+    _load()
+
+    target = _words(goal)
     best = None
-    for qk, a, q, src, ts in rows:
-        sim = _jac(k, qk.split())
-        if sim >= 0.8 and (best is None or (sim, ts) > (best[0], best[1])):
-            best = (sim, ts, a, q, src)
-    if not best:
-        return None
-    return {"answer": best[2], "quote": best[3], "source": best[4],
-            "age_days": int((time.time() - best[1]) / 86400)}
+    best_score = 0
+
+    for skill in SKILLS.values():
+        score = len(target & _words(skill.get("goal", "")))
+
+        if score > best_score:
+            best = skill
+            best_score = score
+
+    if best and best_score >= 2:
+        return best
+
+    return None
+
+
+def context(goal, limit=3):
+    _load()
+
+    target = _words(goal)
+    scored = []
+
+    for skill in SKILLS.values():
+        score = len(target & _words(skill.get("goal", "")))
+
+        if score:
+            scored.append((score, skill))
+
+    scored.sort(reverse=True, key=lambda item: item[0])
+
+    lines = []
+
+    for score, skill in scored[:limit]:
+        steps = []
+
+        for step in skill.get("steps", [])[-8:]:
+            steps.append(
+                "- " + step.get("tool", "?") + "(" +
+                json.dumps(step.get("args", {}), ensure_ascii=False) + ")"
+            )
+
+        lines.append(
+            "Goal: " + skill.get("goal", "") + "\n" + "\n".join(steps)
+        )
+
+    return "\n\n".join(lines)
+
+
+def save(goal, steps):
+    _load()
+
+    if not steps:
+        return
+
+    skill_id = str(int(time.time() * 1000))[-12:]
+    clean_steps = []
+
+    for step in steps[-20:]:
+        clean_steps.append(
+            {
+                "tool": step.get("tool", ""),
+                "args": step.get("args", {}),
+                "ok": bool(step.get("ok"))
+            }
+        )
+
+    SKILLS[skill_id] = {
+        "id": skill_id,
+        "goal": goal,
+        "steps": clean_steps,
+        "created": time.time()
+    }
+
+    _save()
