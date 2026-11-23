@@ -72,6 +72,9 @@ class BrainView(context: Context) : View(context), SensorEventListener {
     private var running = false
     private var sensorsOn = false
 
+    private var focusYaw = 0f
+    private var focusStrength = 0f
+
     private var lastX = 0f
     private var lastY = 0f
     private var lastPinch = 0f
@@ -278,13 +281,21 @@ class BrainView(context: Context) : View(context), SensorEventListener {
 
         activity = min(1.45f, activity + 0.45f)
 
+        var focus = Region.ATTENTION
+        var strongest = -1f
+
         for (region in Region.values()) {
-            if (active.contains(region)) {
-                targetActivation[region] = 1.35f
-            } else {
-                targetActivation[region] = 0.20f
+            val level = if (active.contains(region)) 1.35f else 0.20f
+            targetActivation[region] = level
+
+            if (region != Region.ATTENTION && level > strongest) {
+                strongest = level
+                focus = region
             }
         }
+
+        focusYaw = regionAngle(focus)
+        focusStrength = 1f
 
         val count = 9 + (abs(text.hashCode()) % 10)
 
@@ -408,7 +419,26 @@ class BrainView(context: Context) : View(context), SensorEventListener {
         time += 0.016f
 
         if (lastPinch == 0f) {
-            yaw += 0.0021f
+            val work = (activity - 0.34f).coerceIn(0f, 1.1f)
+            val spin = 0.0021f + work * 0.0165f
+
+            yaw += spin
+
+            if (focusStrength > 0.01f) {
+                var difference = focusYaw - yaw
+
+                while (difference > 3.1415927f) {
+                    difference -= 6.2831853f
+                }
+
+                while (difference < -3.1415927f) {
+                    difference += 6.2831853f
+                }
+
+                val pull = 0.030f + work * 0.075f
+                yaw += difference * pull * focusStrength
+                focusStrength *= 0.985f
+            }
         }
 
         yaw += (tiltYaw - yaw * 0.06f) * 0.02f
@@ -448,6 +478,18 @@ class BrainView(context: Context) : View(context), SensorEventListener {
                     }
                 )
             )
+        }
+    }
+
+    private fun regionAngle(region: Region): Float {
+        return when (region) {
+            Region.LANGUAGE -> 0.45f
+            Region.VISION -> 2.15f
+            Region.SENSES -> 3.55f
+            Region.CEREBELLUM -> 4.35f
+            Region.MOTOR -> 5.35f
+            Region.MEMORY -> 0.05f
+            Region.ATTENTION -> 1.35f
         }
     }
 
