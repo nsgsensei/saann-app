@@ -12,6 +12,21 @@ from engine import cloud
 _lock = threading.RLock()
 _cache = {}
 
+FALLBACKS = {
+    "gemini": [
+        "gemini-2.0-flash",
+        "gemini-2.5-flash",
+        "gemini-flash-latest",
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-flash"
+    ],
+    "groq": [
+        "openai/gpt-oss-20b",
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant"
+    ]
+}
+
 
 def _get(url, headers):
     req = urllib.request.Request(url, headers=headers)
@@ -127,10 +142,16 @@ def test(name):
             except Exception as exc:
                 return _error(exc)
 
+        discovery_error = ""
+
         try:
             candidates = _models(name, key)
         except Exception as exc:
-            return "model discovery: " + _error(exc)
+            discovery_error = _error(exc)
+            candidates = list(FALLBACKS.get(name, []))
+
+            if not candidates:
+                return "model discovery: " + _error(exc)
 
         if not candidates:
             return "key accepted, but no suitable text models were listed"
@@ -180,7 +201,15 @@ def test(name):
             state["models"][name] = previous
         cloud._save_state(state)
 
-        return "; ".join(errors) or "no working text model found"
+        if not errors and discovery_error:
+            errors.append(
+                "model discovery was denied: " + discovery_error
+            )
+
+        return (
+            "; ".join(errors) or
+            "no working text model found"
+        )
 
 
 def _clear_cooldown(name):
