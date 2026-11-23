@@ -70,18 +70,27 @@ object ReplyStyle {
                 continue
             }
 
-            val heading = Regex("^(#{1,3})\\s+(.+)$").matchEntire(line)
-            if (heading != null) {
-                appendInline(heading.groupValues)[2]
-                out.setSpan(
-                    StyleSpan(Typeface.BOLD), start, out.length, flag
-                )
-                out.setSpan(
-                    RelativeSizeSpan(
-                        if (heading.groupValues.length == 1) 1.20f else 1.08f[1]
-                    ),
-                    start, out.length, flag
-                )
+            // SAANN_HEADING_FIX_V11
+            val headingLevel = line.takeWhile { it == '#' }.length
+            val isHeading = headingLevel in 1..3 &&
+                line.length > headingLevel &&
+                line[headingLevel].isWhitespace()
+
+            if (isHeading) {
+                val headingText = line.substring(headingLevel).trimStart()
+                appendInline(headingText)
+                if (out.length > start) {
+                    out.setSpan(
+                        StyleSpan(Typeface.BOLD),
+                        start, out.length, flag
+                    )
+                    out.setSpan(
+                        RelativeSizeSpan(
+                            if (headingLevel == 1) 1.20f else 1.08f
+                        ),
+                        start, out.length, flag
+                    )
+                }
             } else {
                 appendInline(line)
             }
