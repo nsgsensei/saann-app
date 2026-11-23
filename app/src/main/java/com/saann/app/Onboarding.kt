@@ -285,7 +285,7 @@ object Onboarding {
                         val url = when (provider) {
                             "gemini" -> "https://aistudio.google.com/apikey"
                             "groq" -> "https://console.groq.com/keys"
-                            else -> "https://dash.cloudflare.com/"
+                            else -> "https://dash.cloudflare.com/?to=/:account/ai/workers-ai"
                         }
                         try {
                             a.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -316,6 +316,29 @@ object Onboarding {
                                 saveDraft()
                                 page++
                                 render()
+                            }
+                        }
+                    }
+
+                    if (provider == "cloudflare") {
+                        button("Open API tokens page") {
+                            saveDraft()
+
+                            try {
+                                a.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse(
+                                            "https://dash.cloudflare.com/profile/api-tokens"
+                                        )
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                status.setTextColor(RED)
+                                status.text = (
+                                    "Could not open browser. Visit: " +
+                                    "https://dash.cloudflare.com/profile/api-tokens"
+                                )
                             }
                         }
                     }
