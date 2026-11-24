@@ -85,6 +85,8 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var jump: TextView
     private lateinit var py: PyObject
+    // SAANN_BOOT_V1
+    private var bootView: SaannBootView? = null
     private var ready = false
     private var busy = false
     // SAANN_WELCOME_HOME_V1
@@ -292,7 +294,18 @@ class MainActivity : Activity() {
         bar.addView(inCard, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(bar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(Ui2.navBar(this), LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-        setContentView(root)
+        val launchContainer = FrameLayout(this)
+        launchContainer.addView(
+            root,
+            FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+        )
+        val startup = SaannBootView(this)
+        bootView = startup
+        launchContainer.addView(
+            startup,
+            FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+        )
+        setContentView(launchContainer)
 
         loadHistory()
         if (Build.VERSION.SDK_INT >= 33) {
@@ -325,6 +338,9 @@ class MainActivity : Activity() {
                 }
                 runOnUiThread {
                     ready = true
+                    bootView?.finish {
+                        bootView = null
+                    }
                     setBusy(false)
                     setStatus("Ready")
                     startBar()
@@ -335,6 +351,7 @@ class MainActivity : Activity() {
             } catch (e: Throwable) {
                 runOnUiThread {
                     setStatus("Error")
+                    bootView?.fail()
                     addMsg("error: " + e.toString(), false, false)
                 }
             }
@@ -582,6 +599,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        bootView?.dispose()
+        bootView = null
         VoiceWindow.dismiss()
         onStatus = null
         Live.onStep = null
