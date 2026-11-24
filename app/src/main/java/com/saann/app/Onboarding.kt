@@ -190,6 +190,27 @@ object Onboarding {
             }
         }
 
+        fun info(question: String, message: String) {
+            val b = TextView(a)
+            b.text = "? " + question
+            b.textSize = 12f
+            b.setTextColor(0xFFE5484D.toInt())
+            b.setPadding(0, dp(8), 0, dp(2))
+
+            b.setOnClickListener {
+                android.app.AlertDialog.Builder(a)
+                    .setTitle(question)
+                    .setMessage(message)
+                    .setPositiveButton("Got it", null)
+                    .show()
+            }
+
+            box.addView(
+                b,
+                LinearLayout.LayoutParams(-1, -2)
+            )
+        }
+
         fun request(
             operation: String,
             payload: JSONObject,
@@ -255,10 +276,42 @@ object Onboarding {
                     }
                     text(title, 23f)
                     text(description, 15f, DIM)
+
+                    info(
+                        "What is an API key?",
+                        "An API key is a private access code that lets SAANN use a provider such as Google Gemini or Groq. Keep it private: anyone with the key can use your provider account and quota."
+                    )
+
+                    info(
+                        "How do I get one?",
+                        "Tap Open provider key page, sign in, create a key, copy it, return here, and paste it into the key field. SAANN will test the connection before saving it."
+                    )
+
+                    info(
+                        "What if the test fails?",
+                        "Check that you copied the complete key, create a new key if needed, and make sure the provider account has access and available quota. SAANN will show the provider's specific error."
+                    )
                     text(
                         "Provider accounts, access, and quotas are controlled by the provider. Setup does not enable billing.",
                         12f, DIM
                     )
+
+                    if (provider == "cloudflare") {
+                        info(
+                            "What is a Cloudflare Account ID?",
+                            "Your Account ID identifies which Cloudflare account SAANN should use. In Workers AI, choose Use REST API and copy the Account ID shown there."
+                        )
+
+                        info(
+                            "What is a Workers AI token?",
+                            "A Workers AI API token authorizes SAANN to run AI models on your Cloudflare account. Create it from the Workers AI page, copy it immediately, and paste it into the token field."
+                        )
+
+                        info(
+                            "Why do I need both?",
+                            "The Account ID says where to run the model. The API token proves that you have permission to use it. SAANN needs both to generate images."
+                        )
+                    }
 
                     val account = if (provider == "cloudflare") {
                         field("Cloudflare Account ID", "cloudflare_account_key", false)
