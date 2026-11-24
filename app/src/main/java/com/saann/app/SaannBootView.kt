@@ -183,7 +183,6 @@ class SaannBootView(private val activity: Activity) : FrameLayout(activity) {
             .setInterpolator(DecelerateInterpolator())
             .start()
 
-        val firstRun = Onboarding.needed(activity)
         orbit = ValueAnimator.ofFloat(0f, 360f).apply {
             duration = if (firstRun) 26000L else 9000L
             repeatCount = ValueAnimator.INFINITE

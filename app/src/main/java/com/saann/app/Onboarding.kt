@@ -271,19 +271,15 @@ object Onboarding {
 
                     text("WHAT SAANN CAN DO", 12f, ORANGE)
                     text(
-                        "• Chat naturally and explain complex topics
-" +
-                        "• Research questions with sources and evidence
-" +
-                        "• Read and discuss photos, screenshots, and documents
-" +
-                        "• Help with writing, planning, code, and calculations
-" +
-                        "• Use voice input and spoken replies
-" +
-                        "• Run scheduled background tasks
-" +
-                        "• Keep chats and attachments on this phone",
+                        """
+                        • Chat naturally and explain complex topics
+                        • Research questions with sources and evidence
+                        • Read and discuss photos, screenshots, and documents
+                        • Help with writing, planning, code, and calculations
+                        • Use voice input and spoken replies
+                        • Run scheduled background tasks
+                        • Keep chats and attachments on this phone
+                        """.trimIndent(),
                         15f,
                         INK
                     )
