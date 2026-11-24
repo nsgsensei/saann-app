@@ -258,23 +258,61 @@ object Onboarding {
             box.removeAllViews()
 
             text("SAANN", 30f).setTypeface(null, Typeface.BOLD)
-            text("SETUP ${page + 1} / 5", 12f, ORANGE)
+            text("SETUP ${page + 1} / 6", 12f, ORANGE)
 
             when (page) {
-                0, 1, 2 -> {
+                0 -> {
+                    text("Meet SAANN", 30f).setTypeface(null, Typeface.BOLD)
+                    text(
+                        "A private AI assistant for thinking, research, files, images, voice, and everyday tasks.",
+                        16f,
+                        DIM
+                    )
+
+                    text("WHAT SAANN CAN DO", 12f, ORANGE)
+                    text(
+                        "• Chat naturally and explain complex topics
+" +
+                        "• Research questions with sources and evidence
+" +
+                        "• Read and discuss photos, screenshots, and documents
+" +
+                        "• Help with writing, planning, code, and calculations
+" +
+                        "• Use voice input and spoken replies
+" +
+                        "• Run scheduled background tasks
+" +
+                        "• Keep chats and attachments on this phone",
+                        15f,
+                        INK
+                    )
+
+                    text(
+                        "SAANN connects to the AI services you choose. Your provider account, usage, and quotas remain under your control. Private screen, clipboard, location, and message data are not sent online.",
+                        13f,
+                        DIM
+                    )
+
+                    button("Set up SAANN", true) {
+                        page++
+                        render()
+                    }
+                }
+                1, 2, 3 -> {
                     val provider = when (page) {
-                        0 -> "gemini"
-                        1 -> "groq"
+                        1 -> "gemini"
+                        2 -> "groq"
                         else -> "cloudflare"
                     }
                     val title = when (page) {
-                        0 -> "Connect reasoning and vision"
-                        1 -> "Add a fast text backup"
+                        1 -> "Connect reasoning and vision"
+                        2 -> "Add a fast text backup"
                         else -> "Connect image generation"
                     }
                     val description = when (page) {
-                        0 -> "Gemini handles text and attached photos. This connection test checks text access; photo understanding is tested when you attach an image."
-                        1 -> "Groq is optional. Its test sends a short text request using your engine's configured model."
+                        1 -> "Gemini is required for SAANN chat, reasoning, and image understanding. Sign in to Google AI Studio, create an API key, paste it here, and test the connection."
+                        2 -> "Groq is optional. Its test sends a short text request using your engine's configured model."
                         else -> "Cloudflare needs an Account ID and a Workers AI API token. Test connection first, then generate a test image."
                     }
                     text(title, 23f)
@@ -579,15 +617,17 @@ object Onboarding {
                         }
                     }
 
-                    button("Skip this service") {
-                        // Preserve drafts; skipping is not credential removal.
-                        saveDraft()
-                        page++
-                        render()
+                    if (provider != "gemini") {
+                        button("Skip this service") {
+                            // Preserve drafts; skipping is not credential removal.
+                            saveDraft()
+                            page++
+                            render()
+                        }
                     }
                 }
 
-                3 -> {
+                4 -> {
                     text("Set up your voice", 23f)
                     text(
                         "Choose ElevenLabs cloud voice or the phone voice. Cloud voice sends spoken text to ElevenLabs and uses provider credits. Microphone input continues to use your phone's speech service.",
@@ -627,7 +667,7 @@ object Onboarding {
                     }
                 }
 
-                4 -> {
+                5 -> {
                     text("Connect SAANN", 23f)
                     text(
                         "This checks your selected text services again, restores credentials into the live engine, and enables cloud mode. Local model servers stay off.",
@@ -716,11 +756,13 @@ object Onboarding {
                 }
             }
 
-            // SAANN_DIAGNOSTIC_ESCAPE_V1
-            button("Open in offline / diagnostic mode") {
-                Keys.setFlag(a, "connected_setup_v1", true)
-                Keys.setFlag(a, "diagnostic_mode", true)
-                d.dismiss()
+            // SAANN_REQUIRED_FIRST_SETUP_V1
+            if (!firstRun) {
+                button("Open in offline / diagnostic mode") {
+                    Keys.setFlag(a, "connected_setup_v1", true)
+                    Keys.setFlag(a, "diagnostic_mode", true)
+                    d.dismiss()
+                }
             }
 
             if (!firstRun) {
