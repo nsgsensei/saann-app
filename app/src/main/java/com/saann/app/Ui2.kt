@@ -19,7 +19,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import java.io.File
 
-class IconView(ctx: Context, var kind: String, var tint: Int = 0xFFE5484D.toInt(), val disc: Int = 0) : View(ctx) {
+class IconView(ctx: Context, var kind: String, var tint: Int = 0xFFB9AAFF.toInt(), val disc: Int = 0) : View(ctx) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
     private val f = Paint(Paint.ANTI_ALIAS_FLAG)
     override fun onDraw(c: Canvas) {
@@ -31,6 +31,29 @@ class IconView(ctx: Context, var kind: String, var tint: Int = 0xFFE5484D.toInt(
         p.color = tint; p.strokeWidth = maxOf(2f * resources.displayMetrics.density, s * 0.06f)
         f.color = tint
         when (kind) {
+            "stop" -> {
+                c.drawRoundRect(
+                    RectF(-6*k, -6*k, 6*k, 6*k),
+                    1.8f*k, 1.8f*k, f
+                )
+            }
+            "saann" -> {
+                val orbit = RectF(-9*k, -5*k, 9*k, 5*k)
+                p.strokeWidth = maxOf(
+                    resources.displayMetrics.density * 1.4f,
+                    s * 0.035f
+                )
+                for (angle in floatArrayOf(-35f, 25f, 85f)) {
+                    c.save()
+                    c.rotate(angle)
+                    c.drawOval(orbit, p)
+                    c.restore()
+                }
+                f.color = 0xFF72CDB6.toInt()
+                c.drawCircle(0f, 0f, 2.1f*k, f)
+                f.color = 0xFFEFB596.toInt()
+                c.drawCircle(7.5f*k, -6.5f*k, 1.25f*k, f)
+            }
             "plus" -> { c.drawLine(-8 * k, 0f, 8 * k, 0f, p); c.drawLine(0f, -8 * k, 0f, 8 * k, p) }
             "up" -> { c.drawLine(0f, 8 * k, 0f, -8 * k, p); c.drawLine(-7 * k, -1 * k, 0f, -8 * k, p); c.drawLine(7 * k, -1 * k, 0f, -8 * k, p) }
             "mic" -> {
@@ -107,10 +130,10 @@ class IconView(ctx: Context, var kind: String, var tint: Int = 0xFFE5484D.toInt(
 }
 
 object Ui2 {
-    private const val PANEL = 0xFF101010.toInt()
-    private const val CYAN = 0xFFE5484D.toInt()
-    private const val INK = 0xFFFAF7F2.toInt()
-    private const val DIM = 0xFFB8ADA5.toInt()
+    private const val PANEL = 0xFF1B2130.toInt()
+    private const val CYAN = 0xFFB9AAFF.toInt()
+    private const val INK = 0xFFF3F0EB.toInt()
+    private const val DIM = 0xFFA9B2C7.toInt()
     var onChatTap: (() -> Unit)? = null
 
     fun sheet(a: Activity): Pair<Dialog, LinearLayout> {
@@ -123,10 +146,10 @@ object Ui2 {
         val g = GradientDrawable()
         g.setColor(PANEL)
         g.cornerRadii = floatArrayOf(28 * den, 28 * den, 28 * den, 28 * den, 0f, 0f, 0f, 0f)
-        g.setStroke((1 * den).toInt(), 0x55FF442B)
+        g.setStroke((1 * den).toInt(), 0x3372CDB6)
         box.background = g
         val grab = View(a)
-        val gg = GradientDrawable(); gg.cornerRadius = 3 * den; gg.setColor(0x55B8ADA5)
+        val gg = GradientDrawable(); gg.cornerRadius = 3 * den; gg.setColor(0x55A9B2C7)
         grab.background = gg
         val glp = LinearLayout.LayoutParams((40 * den).toInt(), (4 * den).toInt())
         glp.gravity = Gravity.CENTER_HORIZONTAL
@@ -145,7 +168,7 @@ object Ui2 {
         r.orientation = LinearLayout.HORIZONTAL
         r.gravity = Gravity.CENTER_VERTICAL
         r.setPadding(0, (10 * den).toInt(), 0, (10 * den).toInt())
-        r.addView(IconView(a, kind, CYAN, 0x1FE5484D), LinearLayout.LayoutParams((38 * den).toInt(), (38 * den).toInt()))
+        r.addView(IconView(a, kind, CYAN, 0x1FB9AAFF), LinearLayout.LayoutParams((38 * den).toInt(), (38 * den).toInt()))
         val t = TextView(a)
         t.text = label; t.setTextColor(INK); t.textSize = 16f
         t.setPadding((16 * den).toInt(), 0, 0, 0)
@@ -195,18 +218,29 @@ object Ui2 {
         val den = a.resources.displayMetrics.density
         val bar = LinearLayout(a)
         bar.orientation = LinearLayout.HORIZONTAL
-        bar.setBackgroundColor(0xFF050505.toInt())
+        bar.setBackgroundColor(0xFF10131D.toInt())
         bar.setPadding(0, (6 * den).toInt(), 0, (6 * den).toInt())
-        val items = listOf(Triple("chat", "Chat", true), Triple("folder", "Projects", false), Triple("tasks", "Tasks", false), Triple("library", "Library", false))
+        val items = listOf(Triple("chat", "Chat", true), Triple("saann", "SAANN", false), Triple("tasks", "Tasks", false), Triple("library", "Library", false))
         for ((k, n, on) in items) {
+            val accent = when (k) {
+                "saann" -> 0xFFB9AAFF.toInt()
+                "tasks" -> 0xFFEFB596.toInt()
+                "library" -> 0xFF72CDB6.toInt()
+                else -> 0xFFAFC8EF.toInt()
+            }
             val c = LinearLayout(a)
             c.orientation = LinearLayout.VERTICAL
             c.gravity = Gravity.CENTER_HORIZONTAL
-            c.addView(IconView(a, k, if (on) CYAN else DIM), LinearLayout.LayoutParams((22 * den).toInt(), (22 * den).toInt()))
+            c.minimumHeight = (52 * den).toInt()
+            c.contentDescription = n
+            c.addView(IconView(a, k, accent), LinearLayout.LayoutParams((22 * den).toInt(), (22 * den).toInt()))
             val l = TextView(a)
-            l.text = n; l.textSize = 11f; l.setTextColor(if (on) CYAN else DIM); l.gravity = Gravity.CENTER
+            l.text = n; l.textSize = 11f; l.setTextColor(if (on || k == "saann") accent else DIM); l.gravity = Gravity.CENTER
             c.addView(l)
             if (on) c.setOnClickListener { onChatTap?.invoke() }
+            else if (k == "saann") c.setOnClickListener {
+                SaannConnections.show(a)
+            }
             else if (k == "library") c.setOnClickListener { Recents.library(a) }
             else if (k == "tasks") c.setOnClickListener { Tasks.show(a) }
             else c.setOnClickListener { panel(a, n, k) }
@@ -220,10 +254,10 @@ object Ui2 {
 fun pressFx(v: View) {
     v.setOnTouchListener { view, e ->
         when (e.actionMasked) {
-            android.view.MotionEvent.ACTION_DOWN -> view.animate().scaleX(0.92f).scaleY(0.92f).setDuration(90).start()
+            android.view.MotionEvent.ACTION_DOWN -> view.animate().scaleX(0.97f).scaleY(0.97f).setDuration(90).start()
             android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
                 view.animate().scaleX(1f).scaleY(1f).setDuration(160)
-                    .setInterpolator(android.view.animation.OvershootInterpolator(2.2f)).start()
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
         }
         false
     }

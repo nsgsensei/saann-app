@@ -91,7 +91,14 @@ def run(message, responder, session_id=None, history=None):
         # SAANN_RESEARCH_ROUTING_V8
         # SAANN_NATURAL_ROUTING_V9
         from engine import research, natural_route
-        decision = natural_route.decide(text)
+        # SAANN_SESSION_IMAGES_V1
+        from engine import image_session
+        image_job = image_session.plan(text, history)
+        decision = (
+            {"route": "reply", "query": "", "question": ""}
+            if image_job is not None
+            else natural_route.decide(text)
+        )
         research_query = (
             decision.get("query")
             if decision.get("route") == "research"
@@ -103,7 +110,9 @@ def run(message, responder, session_id=None, history=None):
             if not text.lstrip().startswith("/"):
                 brain.think_text(text)
 
-            if decision.get("route") == "clarify":
+            if image_job is not None:
+                answer = image_job()
+            elif decision.get("route") == "clarify":
                 answer = decision["question"]
             elif research_query:
                 answer = research.answer(research_query)

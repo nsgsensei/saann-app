@@ -20,12 +20,12 @@ import android.widget.TextView
 import org.json.JSONObject
 
 object Onboarding {
-    private val BG = 0xFF050505.toInt()
-    private val PANEL = 0xFF101010.toInt()
-    private val ORANGE = 0xFFE5484D.toInt()
-    private val RED = 0xFFEF4444.toInt()
-    private val INK = 0xFFFAF7F2.toInt()
-    private val DIM = 0xFFB8ADA5.toInt()
+    private val BG = 0xFF10131D.toInt()
+    private val PANEL = 0xFF1B2130.toInt()
+    private val ORANGE = 0xFFB9AAFF.toInt()
+    private val RED = 0xFFEF8791.toInt()
+    private val INK = 0xFFF3F0EB.toInt()
+    private val DIM = 0xFFB0B9CB.toInt()
     private val ui = Handler(Looper.getMainLooper())
 
     private val names = listOf(
@@ -97,13 +97,13 @@ object Onboarding {
             b.textSize = 14f
             b.setTextColor(
                 if (label.contains("provider", ignoreCase = true))
-                    0xFF78AFFF.toInt()
+                    0xFFAFC8EF.toInt()
                 else if (primary) BG else INK
             )
             b.background = GradientDrawable().apply {
                 cornerRadius = dp(16).toFloat()
                 setColor(if (primary) ORANGE else PANEL)
-                setStroke(dp(1), if (primary) ORANGE else 0x55E5484D)
+                setStroke(dp(1), if (primary) ORANGE else 0x3372CDB6)
             }
             val lp = LinearLayout.LayoutParams(-1, dp(48))
             lp.topMargin = dp(12)
@@ -130,7 +130,7 @@ object Onboarding {
             e.background = GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat()
                 setColor(PANEL)
-                setStroke(dp(1), 0x55E5484D)
+                setStroke(dp(1), 0x3372CDB6)
             }
             e.setText(Keys.get(a, storage) ?: "")
             box.addView(e, LinearLayout.LayoutParams(-1, -2))
@@ -175,7 +175,7 @@ object Onboarding {
                 image.background = GradientDrawable().apply {
                     cornerRadius = dp(16).toFloat()
                     setColor(PANEL)
-                    setStroke(dp(1), 0x55E5484D)
+                    setStroke(dp(1), 0x3372CDB6)
                 }
 
                 val lp = LinearLayout.LayoutParams(-1, dp(240))
@@ -194,7 +194,7 @@ object Onboarding {
             val b = TextView(a)
             b.text = "? " + question
             b.textSize = 12f
-            b.setTextColor(0xFFE5484D.toInt())
+            b.setTextColor(0xFFB9AAFF.toInt())
             b.setPadding(0, dp(8), 0, dp(2))
 
             b.setOnClickListener {
@@ -219,7 +219,10 @@ object Onboarding {
         ) {
             running = true
             status.setTextColor(ORANGE)
-            status.text = "Connecting… Please wait."
+            status.text = if (operation == "image_test")
+                "Generating a test image… This uses image quota."
+            else
+                "Testing provider access and a usable model… Please wait."
             Thread {
                 val result = try {
                     val p = Host.py
@@ -321,17 +324,134 @@ object Onboarding {
                         "${provider}_key"
                     )
 
-                    fun saveDraft() {
+                    // SAANN_VERIFIED_SETUP_V3
+                    fun saveDraft(verified: Boolean = false) {
+                        // Browser navigation and skipping must not replace a key.
+                        if (!verified) return
                         Keys.set(a, "${provider}_key", key.text.toString().trim())
                         if (account != null) {
                             Keys.set(a, "cloudflare_account_key", account.text.toString().trim())
                         }
                     }
 
-                    val status = text("Not tested in this session.", 14f, DIM)
+                    button("Paste key or token") {
+                        val clipboard = a.getSystemService(
+                            Context.CLIPBOARD_SERVICE
+                        ) as android.content.ClipboardManager
+                        val item = clipboard.primaryClip
+                        if (item != null && item.itemCount > 0) {
+                            val value = item.getItemAt(0)
+                                .coerceToText(a)?.toString()?.trim().orEmpty()
+                            if (value.isNotEmpty()) {
+                                key.setText(value)
+                                key.setSelection(key.text.length)
+                            }
+                        }
+                    }
+
+                    button("Show / hide key") {
+                        val reveal = key.transformationMethod != null
+                        key.transformationMethod = if (reveal) null else
+                            android.text.method.PasswordTransformationMethod
+                                .getInstance()
+                        key.setSelection(key.text.length)
+                    }
+
+                    if (account != null) {
+                        button("Paste Cloudflare Account ID") {
+                            val clipboard = a.getSystemService(
+                                Context.CLIPBOARD_SERVICE
+                            ) as android.content.ClipboardManager
+                            val item = clipboard.primaryClip
+                            if (item != null && item.itemCount > 0) {
+                                account.setText(
+                                    item.getItemAt(0).coerceToText(a)
+                                        ?.toString()?.trim().orEmpty()
+                                )
+                            }
+                        }
+                    }
+
+                    val guidance = when (provider) {
+                        "gemini" ->
+                            "Open Google AI Studio, sign in, and create an API " +
+                            "key for a project you can access. Return here, " +
+                            "paste the complete key, then connect."
+                        "groq" ->
+                            "Open Groq API Keys, sign in, and create a key. " +
+                            "Your account must have permission to create keys. " +
+                            "Copy the secret, return here, and paste it."
+                        else ->
+                            "Open Workers AI and choose Use REST API. Copy " +
+                            "your Account ID and create a Workers AI token. " +
+                            "Return here and paste each into its own field."
+                    }
+
+                    info("Step-by-step connection help", guidance)
+                    info(
+                        "Will SAANN create the key automatically?",
+                        "SAANN opens the provider's official setup page and " +
+                        "handles connection testing here. Sign-in, verification, " +
+                        "and key creation still require the provider's supported " +
+                        "authorization or your confirmation. Never enter your " +
+                        "provider password into SAANN."
+                    )
+                    info(
+                        "What does Connected mean?",
+                        "The provider returned a usable text response. This " +
+                        "does not prove image or voice access. Connection tests " +
+                        "can use a small amount of provider quota."
+                    )
+                    info(
+                        "What happens if a replacement fails?",
+                        "SAANN keeps the previous saved credential. Check the " +
+                        "provider message before retrying. Changing models " +
+                        "cannot fix an account permission or billing restriction."
+                    )
+
+                    val status = text(
+                        "Not tested yet. Your saved connection is unchanged.",
+                        14f, DIM
+                    )
                     var passed = false
                     var checkedKey = ""
                     var checkedAccount = ""
+
+                    // SAANN_CREDENTIAL_EDIT_GUARD_V1
+                    val credentialWatcher = object : android.text.TextWatcher {
+                        override fun beforeTextChanged(
+                            value: CharSequence?,
+                            start: Int,
+                            count: Int,
+                            after: Int
+                        ) {}
+
+                        override fun onTextChanged(
+                            value: CharSequence?,
+                            start: Int,
+                            before: Int,
+                            count: Int
+                        ) {
+                            passed = false
+                            checkedKey = ""
+                            checkedAccount = ""
+                            status.setTextColor(DIM)
+                            status.text = if (running) {
+                                "Credentials changed. The pending test will " +
+                                "not save these changes; test again afterward."
+                            } else {
+                                "Credentials changed. Test this connection " +
+                                "before continuing."
+                            }
+                        }
+
+                        override fun afterTextChanged(
+                            value: android.text.Editable?
+                        ) {}
+                    }
+
+                    key.addTextChangedListener(credentialWatcher)
+                    account?.addTextChangedListener(credentialWatcher)
 
                     button("Open provider key page") {
                         saveDraft()
@@ -361,14 +481,42 @@ object Onboarding {
                                 .put("account", testedAccount),
                             status
                         ) { result ->
-                            passed = result.optBoolean("ok")
-                            checkedKey = testedKey
-                            checkedAccount = testedAccount
-                            // SAANN_FAST_ADVANCE_V2
-                            if (passed && provider != "cloudflare") {
-                                saveDraft()
-                                page++
-                                render()
+                            val unchanged =
+                                testedKey == key.text.toString().trim() &&
+                                testedAccount ==
+                                    (account?.text?.toString()?.trim() ?: "")
+
+                            passed = result.optBoolean("ok") && unchanged
+
+                            if (!unchanged) {
+                                checkedKey = ""
+                                checkedAccount = ""
+                                status.setTextColor(DIM)
+                                status.text =
+                                    "The test used earlier credentials. " +
+                                    "Your edited credentials were not saved. " +
+                                    "Test again to connect them."
+                            } else if (passed) {
+                                checkedKey = testedKey
+                                checkedAccount = testedAccount
+
+                                // Save exactly the values that passed.
+                                Keys.set(a, "${provider}_key", testedKey)
+                                if (provider == "cloudflare") {
+                                    Keys.set(
+                                        a,
+                                        "cloudflare_account_key",
+                                        testedAccount
+                                    )
+                                }
+
+                                if (provider != "cloudflare") {
+                                    page++
+                                    render()
+                                }
+                            } else {
+                                checkedKey = ""
+                                checkedAccount = ""
                             }
                         }
                     }
@@ -425,7 +573,7 @@ object Onboarding {
                             status.text = "Test the current credentials before continuing, or skip this service."
                             status.setTextColor(RED)
                         } else {
-                            saveDraft()
+                            saveDraft(true)
                             page++
                             render()
                         }
@@ -550,7 +698,9 @@ object Onboarding {
                                     status.setTextColor(if (success) ORANGE else RED)
                                     if (success) {
                                         Keys.setFlag(a, "connected_setup_v1", true)
+                                        Keys.setFlag(a, "diagnostic_mode", false)
                                         d.dismiss()
+                                        SetupFinish.show(a)
                                     }
                                 }
                             }

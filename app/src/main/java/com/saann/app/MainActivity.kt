@@ -38,13 +38,14 @@ import java.io.File
 class MainActivity : Activity() {
     companion object {
         @Volatile var onStatus: ((String) -> Unit)? = null
-        private const val BG = 0xFF050505.toInt()
-        private const val PANEL = 0xFF101010.toInt()
-        private const val CYAN = 0xFFE5484D.toInt()
-        private const val INK = 0xFFFAF7F2.toInt()
-        private const val DIM = 0xFFB8ADA5.toInt()
-        private const val BODY = 0xFFEDE6DF.toInt()
-        private const val BAD = 0xFFEF4444.toInt()
+        // SAANN_CALM_MOTION_V2
+        private const val BG = 0xFF10131D.toInt()
+        private const val PANEL = 0xFF1B2130.toInt()
+        private const val CYAN = 0xFFB9AAFF.toInt()
+        private const val INK = 0xFFF3F0EB.toInt()
+        private const val DIM = 0xFFB0B9CB.toInt()
+        private const val BODY = 0xFFDCE6F1.toInt()
+        private const val BAD = 0xFFEF8791.toInt()
     }
 
     // The "what I am doing" card: steps, plus a live picture of the screen.
@@ -86,6 +87,10 @@ class MainActivity : Activity() {
     private lateinit var py: PyObject
     private var ready = false
     private var busy = false
+    // SAANN_WELCOME_HOME_V1
+    private var welcomeHome: View? = null
+    // SAANN_STOP_REPLY_V1
+    private var stopRequested = false
     private var typing: TextView? = null
     private var dotStep = 0
     private var card: Card? = null
@@ -94,7 +99,7 @@ class MainActivity : Activity() {
     private val pending = ArrayList<Attachment>()
     private var camUri: android.net.Uri? = null
     private lateinit var chips: LinearLayout
-    private val SAANN_ORANGE = 0xFFE5484D.toInt()
+    private val SAANN_ORANGE = 0xFFB9AAFF.toInt()
     private var agentTv: TextView? = null
     private val dotTask = object : Runnable {
         override fun run() {
@@ -120,18 +125,26 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.setBackgroundColor(BG)
+        root.background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(
+                0xFF151A29.toInt(),
+                BG,
+                0xFF142126.toInt()
+            )
+        )
         root.fitsSystemWindows = true
 
         // header
         val head = LinearLayout(this)
         head.orientation = LinearLayout.HORIZONTAL
         head.gravity = Gravity.CENTER_VERTICAL
-        head.setPadding(dp(10), dp(6), dp(10), dp(6))
+        head.setPadding(dp(12), dp(8), dp(12), dp(8))
         orb = OrbView(this)
         val menu = IconView(this, "menu", INK)
+        menu.contentDescription = "Chat history"
         menu.setOnClickListener { openRecents() }
-        head.addView(menu, LinearLayout.LayoutParams(dp(28), dp(28)))
+        head.addView(menu, LinearLayout.LayoutParams(dp(48), dp(48)))
         head.addView(orb, LinearLayout.LayoutParams(dp(26), dp(26)))
         orb.setOnClickListener { toggleBrain() }
         val col = LinearLayout(this)
@@ -151,36 +164,21 @@ class MainActivity : Activity() {
         col.addView(title)
         col.addView(status)
         head.addView(col, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        val det = TextView(this)
-        det.text = "BRAIN ›"
-        det.setTextColor(CYAN)
-        det.textSize = 12f
-        det.letterSpacing = 0.15f
-        det.setPadding(dp(10), dp(8), dp(4), dp(8))
-        det.setOnClickListener { BrainDetail.show(this) }
-        val ag = TextView(this)
-        ag.text = agentLabel()
-        ag.setTextColor(if (AgentService.listening) SAANN_ORANGE else CYAN)
-        ag.textSize = 12f
-        ag.maxLines = 1
-        ag.letterSpacing = 0.15f
-        ag.setPadding(dp(8), dp(8), dp(4), dp(8))
-        ag.setOnClickListener { cycleAgent() }
-        agentTv = ag
-        head.addView(ag)
-        val setup = TextView(this)
-        setup.text = "SETUP"
-        setup.setTextColor(SAANN_ORANGE)
-        setup.textSize = 12f
-        setup.letterSpacing = 0.15f
-        setup.setPadding(dp(10), dp(8), dp(4), dp(8))
-        setup.setOnClickListener { Onboarding.show(this) }
-        head.addView(setup)
-        head.addView(det)
+        // SAANN_UI_POLISH_V1
+        val settingsButton = IconView(this, "gear", DIM)
+        settingsButton.contentDescription = "Settings"
+        settingsButton.setOnClickListener {
+            Settings.show(this, { cycleAgent() }, { agentLabel() })
+        }
+        pressFx(settingsButton)
+        head.addView(
+            settingsButton,
+            LinearLayout.LayoutParams(dp(48), dp(48))
+        )
         root.addView(head)
 
         val line = View(this)
-        line.setBackgroundColor(0x33FF7A18)
+        line.setBackgroundColor(0x3372CDB6)
         root.addView(line, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)))
         brain = BrainView(this)
         brain.visibility = View.GONE
@@ -227,8 +225,12 @@ class MainActivity : Activity() {
         inCard.setPadding(dp(8), dp(6), dp(8), dp(6))
         val cg = GradientDrawable()
         cg.cornerRadius = dp(28).toFloat()
-        cg.setColor(PANEL)
-        cg.setStroke(dp(1), 0x55E5484D)
+        cg.colors = intArrayOf(
+            0xFF23283A.toInt(),
+            0xFF1C2C31.toInt()
+        )
+        cg.orientation = GradientDrawable.Orientation.LEFT_RIGHT
+        cg.setStroke(dp(1), 0x55B9AAFF)
         inCard.background = cg
         chips = LinearLayout(this)
         chips.orientation = LinearLayout.HORIZONTAL
@@ -237,8 +239,8 @@ class MainActivity : Activity() {
         chipScroll.addView(chips)
         inCard.addView(chipScroll, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         input = EditText(this)
-        input.hint = "Message SAANN"
-        input.setHintTextColor(0x88B8ADA5.toInt())
+        input.hint = "Ask SAANN…"
+        input.setHintTextColor(0x88A9B2C7.toInt())
         input.setTextColor(INK)
         input.textSize = 16f
         input.maxLines = 5
@@ -249,13 +251,15 @@ class MainActivity : Activity() {
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
-        val plus = IconView(this, "plus", CYAN)
+        val plus = IconView(this, "plus", 0xFF72CDB6.toInt())
+        plus.contentDescription = "Attach a photo or file"
         plus.setOnClickListener { attachMenu() }
-        row.addView(plus, LinearLayout.LayoutParams(dp(34), dp(34)))
+        row.addView(plus, LinearLayout.LayoutParams(dp(48), dp(48)))
         row.addView(input, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        val mic = IconView(this, "mic", CYAN)
-        mic.setOnClickListener { startVoice() }
-        row.addView(mic, LinearLayout.LayoutParams(dp(34), dp(34)))
+        val mic = IconView(this, "saann", CYAN)
+        mic.contentDescription = "Models and connections"
+        mic.setOnClickListener { SaannConnections.show(this) }
+        row.addView(mic, LinearLayout.LayoutParams(dp(48), dp(48)))
         val up = IconView(this, "wave", BG, CYAN)
         pressFx(plus)
         pressFx(mic)
@@ -268,9 +272,10 @@ class MainActivity : Activity() {
         inCard.layoutTransition = lt
         input.setOnFocusChangeListener { _, f ->
             val va = android.animation.ValueAnimator.ofObject(android.animation.ArgbEvaluator(),
-                if (f) 0x33FFFFFF else 0xCCFF7A18.toInt(), if (f) 0xCCFF7A18.toInt() else 0x33FFFFFF)
+                if (f) 0x5572CDB6 else 0x99AFC8EF.toInt(),
+                if (f) 0x99AFC8EF.toInt() else 0x5572CDB6)
             va.duration = 160
-            va.addUpdateListener { cg.setStroke(dp(if (f) 2 else 1), it.animatedValue as Int) }
+            va.addUpdateListener { cg.setStroke(dp(1), it.animatedValue as Int) }
             va.start()
         }
         input.addTextChangedListener(object : android.text.TextWatcher {
@@ -278,7 +283,7 @@ class MainActivity : Activity() {
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) { updateAction() }
             override fun afterTextChanged(s: android.text.Editable?) {}
         })
-        val slp = LinearLayout.LayoutParams(dp(32), dp(32))
+        val slp = LinearLayout.LayoutParams(dp(48), dp(48))
         slp.leftMargin = dp(4)
         row.addView(send, slp)
         inCard.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
@@ -336,6 +341,10 @@ class MainActivity : Activity() {
         }.start()
 
         send.setOnClickListener {
+            if (busy) {
+                interruptReply()
+                return@setOnClickListener
+            }
             val t0 = input.text.toString().trim()
             if (t0.isEmpty() && pending.isEmpty()) {
                 if (ready && !busy) startVoice()
@@ -396,6 +405,15 @@ class MainActivity : Activity() {
             val requestHistory = hist.toString()
             Host.respondChat(t, requestSessionId, requestHistory) { r ->
                 runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    if (stopRequested) {
+                        hideTyping()
+                        finishCard()
+                        addMsg("Reply stopped.", false)
+                        setBusy(false)
+                        setStatus("Ready")
+                        return@runOnUiThread
+                    }
                     hideTyping()
                     finishCard()
                     val spoken = r.replace(Regex("\\[image: .+?\\]"), "").trim()
@@ -413,6 +431,7 @@ class MainActivity : Activity() {
     // streaming: words appear in the thinking bubble as they are written
     private fun onStreamText(s: String) {
         runOnUiThread {
+            if (stopRequested || !busy) return@runOnUiThread
             typing?.let {
                 ui.removeCallbacks(dotTask)
                 it.alpha = 1f
@@ -448,25 +467,76 @@ class MainActivity : Activity() {
     }
 
     private fun addImage(path: String) {
-        val o = android.graphics.BitmapFactory.Options()
-        o.inJustDecodeBounds = true
-        android.graphics.BitmapFactory.decodeFile(path, o)
-        var s = 1
-        while (o.outWidth / s > 1200) s *= 2
-        val o2 = android.graphics.BitmapFactory.Options()
-        o2.inSampleSize = s
-        val bm = android.graphics.BitmapFactory.decodeFile(path, o2) ?: return
-        val iv = android.widget.ImageView(this)
-        iv.setImageBitmap(bm)
-        iv.adjustViewBounds = true
-        iv.scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
-        val lp = LinearLayout.LayoutParams((resources.displayMetrics.widthPixels * 0.78f).toInt(), WRAP_CONTENT)
+        val targetChat = chat
+        val targetSession = ChatStore.currentId(this)
+        val iv = ImageView(this).apply {
+            adjustViewBounds = true
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            minimumHeight = dp(100)
+            contentDescription = "Image preview loading"
+            background = GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                setColor(0xFF202D38.toInt())
+                setStroke(dp(1), 0x3372CDB6)
+            }
+        }
+        val lp = LinearLayout.LayoutParams(
+            (resources.displayMetrics.widthPixels * 0.82f).toInt(),
+            WRAP_CONTENT
+        )
         lp.gravity = Gravity.START
-        lp.topMargin = dp(5)
-        lp.bottomMargin = dp(5)
+        lp.topMargin = dp(8)
+        lp.bottomMargin = dp(10)
         iv.layoutParams = lp
-        iv.setOnClickListener { Previewer.showFile(this, File(path)) }
+        iv.setOnClickListener {
+            Previewer.showFile(this, File(path))
+        }
         place(iv, true)
+
+        Thread {
+            val bitmap = try {
+                val bounds = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeFile(path, bounds)
+                var sample = 1
+                while (
+                    bounds.outWidth / sample > 1200 ||
+                    bounds.outHeight / sample > 1600
+                ) {
+                    sample *= 2
+                }
+                BitmapFactory.decodeFile(
+                    path,
+                    BitmapFactory.Options().apply {
+                        inSampleSize = sample
+                    }
+                )
+            } catch (_: Exception) {
+                null
+            }
+
+            runOnUiThread {
+                if (
+                    isFinishing || isDestroyed ||
+                    targetSession != ChatStore.currentId(this) ||
+                    iv.parent !== targetChat
+                ) {
+                    bitmap?.recycle()
+                } else if (bitmap != null) {
+                    iv.minimumHeight = 0
+                    iv.setImageBitmap(bitmap)
+                    iv.contentDescription = "Image preview. Tap to open"
+                } else {
+                    iv.contentDescription = "Image preview unavailable"
+                    Toast.makeText(
+                        this,
+                        "Could not display an image preview",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }.start()
     }
 
     private fun agentLabel(): String =
@@ -521,8 +591,160 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    private fun dismissWelcomeHome() {
+        welcomeHome?.let { view ->
+            view.animate().cancel()
+            (view.parent as? android.view.ViewGroup)?.removeView(view)
+        }
+        welcomeHome = null
+    }
+
+    private fun refreshWelcomeHome() {
+        dismissWelcomeHome()
+        if (hist.length() != 0 || busy) return
+
+        val home = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(12), dp(30), dp(12), dp(24))
+        }
+
+        val mark = IconView(this, "saann", 0xFFB9AAFF.toInt()).apply {
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        home.addView(
+            mark,
+            LinearLayout.LayoutParams(dp(76), dp(76)).apply {
+                bottomMargin = dp(14)
+            }
+        )
+
+        val title = TextView(this).apply {
+            text = "What's on your mind?"
+            textSize = 27f
+            gravity = Gravity.CENTER
+            setTextColor(INK)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 0, 0, dp(10))
+        }
+        home.addView(
+            title,
+            LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+        )
+
+        val subtitle = TextView(this).apply {
+            text = "A little curiosity. A fresh idea.\nA place to start."
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(DIM)
+            setLineSpacing(dp(3).toFloat(), 1f)
+            setPadding(0, 0, 0, dp(24))
+        }
+        home.addView(
+            subtitle,
+            LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+        )
+
+        fun suggestion(
+            titleText: String,
+            description: String,
+            prompt: String,
+            accent: Int,
+            surface: Int
+        ) {
+            val tile = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                minimumHeight = dp(76)
+                setPadding(dp(18), dp(13), dp(18), dp(13))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(20).toFloat()
+                    setColor(surface)
+                    setStroke(dp(1), (accent and 0x00FFFFFF) or 0x33000000)
+                }
+                isFocusable = true
+                contentDescription = "$titleText. $description. Add suggestion to message"
+            }
+
+            tile.addView(TextView(this).apply {
+                text = titleText
+                textSize = 16f
+                setTextColor(accent)
+                setTypeface(typeface, Typeface.BOLD)
+            })
+            tile.addView(TextView(this).apply {
+                text = description
+                textSize = 13f
+                setTextColor(BODY)
+                setPadding(0, dp(5), 0, 0)
+            })
+
+            tile.setOnClickListener {
+                if (busy) return@setOnClickListener
+                if (input.text.isNotBlank()) {
+                    Toast.makeText(
+                        this,
+                        "Your draft is still here. Clear it to use a suggestion.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    input.setText(prompt)
+                    input.setSelection(input.text.length)
+                    input.requestFocus()
+                    input.post {
+                        if (!isFinishing && !isDestroyed && input.hasFocus()) {
+                            val keyboard = getSystemService(
+                                android.content.Context.INPUT_METHOD_SERVICE
+                            ) as android.view.inputmethod.InputMethodManager
+                            keyboard.showSoftInput(
+                                input,
+                                android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT
+                            )
+                        }
+                    }
+                }
+            }
+            pressFx(tile)
+            home.addView(
+                tile,
+                LinearLayout.LayoutParams(
+                    MATCH_PARENT, WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(10)
+                }
+            )
+        }
+
+        suggestion(
+            "Explore something",
+            "Turn a big question into a clear explanation",
+            "Help me understand ",
+            0xFFAFC8EF.toInt(),
+            0xFF202B3B.toInt()
+        )
+        suggestion(
+            "Make room for an idea",
+            "Write, imagine, or create something new",
+            "Help me brainstorm ideas for ",
+            0xFF9DD6C4.toInt(),
+            0xFF1D302F.toInt()
+        )
+        suggestion(
+            "Find a little focus",
+            "Break a goal into manageable next steps",
+            "Help me plan ",
+            0xFFE8BC9F.toInt(),
+            0xFF332B2A.toInt()
+        )
+
+        welcomeHome = home
+        chat.addView(
+            home,
+            LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT)
+        )
+    }
+
     private fun startBar() {
-        addMsg(BarPrefs.start(this), false, false)
+        refreshWelcomeHome()
     }
 
     private fun toggleBrain() {
@@ -537,26 +759,55 @@ class MainActivity : Activity() {
 
     private fun updateAction() {
         val v = send as? IconView ?: return
-        val want = if (input.text.isNotEmpty() || pending.isNotEmpty()) "up" else "wave"
+        val want = if (busy) "stop"
+            else if (input.text.isNotEmpty() || pending.isNotEmpty()) "up"
+            else "wave"
+        send.contentDescription = when {
+            busy && stopRequested -> "Stop requested; waiting for current operation"
+            busy -> "Stop reply"
+            want == "up" -> "Send message"
+            else -> "Start voice input"
+        }
         if (v.kind != want) {
             v.kind = want
             v.invalidate()
-            v.animate().scaleX(1.18f).scaleY(1.18f).setDuration(90).withEndAction {
+            v.animate().scaleX(1.04f).scaleY(1.04f).setDuration(90).withEndAction {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(140)
-                    .setInterpolator(android.view.animation.OvershootInterpolator(2f)).start()
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
             }.start()
         }
     }
 
     private fun setBusy(b: Boolean) {
         busy = b
+        stopRequested = false
         orb.speed = if (b) 1.7f else 0.35f
-        send.isEnabled = ready && !b
-        send.alpha = if (ready && !b) 1f else 0.4f
+        send.isEnabled = ready
+        send.alpha = if (ready) 1f else 0.4f
+        updateAction()
+    }
+
+    private fun interruptReply() {
+        if (!busy || stopRequested) return
+        stopRequested = true
+        hideTyping()
+        finishCard()
+        Host.stop()
+        updateAction()
+        send.alpha = 0.55f
+        setStatus("Stopping… waiting for the current operation")
+        Toast.makeText(
+            this,
+            "Reply hidden. A submitted provider request may still finish " +
+                "and use quota.",
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     private fun setStatus(s: String) {
-        status.text = s.take(60)
+        status.text = if (busy && stopRequested)
+            "Stopping… waiting for the current operation"
+        else s.take(60)
     }
 
     // ---------- scrolling ----------
@@ -574,9 +825,9 @@ class MainActivity : Activity() {
         val stick = force || nearBottom()
         val a0 = v.alpha
         v.alpha = 0f
-        v.translationY = dp(12).toFloat()
+        v.translationY = dp(5).toFloat()
         chat.addView(v)
-        v.animate().alpha(a0).translationY(0f).setDuration(220)
+        v.animate().alpha(a0).translationY(0f).setDuration(150)
             .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
         if (stick) scrollDown() else jump.visibility = View.VISIBLE
     }
@@ -604,8 +855,8 @@ class MainActivity : Activity() {
             tv.setPadding(dp(14), dp(10), dp(14), dp(10))
             tv.background = GradientDrawable().apply {
                 cornerRadius = dp(18).toFloat()
-                setColor(0xFF1A0E0E.toInt())
-                setStroke(dp(1), 0x55E5484D)
+                setColor(0xFF29263C.toInt())
+                setStroke(dp(1), 0x55B9AAFF)
             }
         } else {
             tv.setPadding(dp(4), dp(4), dp(4), dp(8))
@@ -618,6 +869,7 @@ class MainActivity : Activity() {
     }
 
     private fun addMsg(text: String, mine: Boolean, save: Boolean = true) {
+        dismissWelcomeHome()
         place(bubble(text, mine), mine)
         place(actions(text, mine), mine)
         if (save) remember(text, mine)
@@ -644,7 +896,10 @@ class MainActivity : Activity() {
     private fun loadHistory() {
         try {
             val f = histFile()
-            if (!f.exists()) return
+            if (!f.exists()) {
+                refreshWelcomeHome()
+                return
+            }
             val a = JSONArray(f.readText())
             for (i in 0 until a.length()) {
                 val o = a.getJSONObject(i)
@@ -656,6 +911,7 @@ class MainActivity : Activity() {
             scrollDown()
         } catch (e: Exception) {
         }
+        refreshWelcomeHome()
     }
 
     // SAANN_RICH_HISTORY_V10
@@ -745,6 +1001,7 @@ class MainActivity : Activity() {
     }
 
     private fun resetChatViews() {
+        dismissWelcomeHome()
         chat.removeAllViews()
         while (hist.length() > 0) hist.remove(0)
         card = null
@@ -770,7 +1027,7 @@ class MainActivity : Activity() {
         }
         ChatStore.create(this)
         resetChatViews()
-        addMsg("New chat. What's on your mind?", false, false)
+        refreshWelcomeHome()
     }
 
     private fun actions(text: String, mine: Boolean): View {
@@ -797,13 +1054,14 @@ class MainActivity : Activity() {
     }
 
     private fun clearChat() {
+        dismissWelcomeHome()
         chat.removeAllViews()
         while (hist.length() > 0) hist.remove(0)
         try { histFile().delete() } catch (e: Exception) { }
         card = null
         lastCard = null
         typing = null
-        addMsg("Chat cleared.", false, false)
+        refreshWelcomeHome()
     }
 
     // ---------- what SAANN is doing ----------
@@ -827,7 +1085,7 @@ class MainActivity : Activity() {
         img.setPadding(0, dp(8), 0, dp(4))
         img.visibility = View.GONE
         val cap = TextView(this)
-        cap.setTextColor(0x99B8ADA5.toInt())
+        cap.setTextColor(0x99A9B2C7.toInt())
         cap.textSize = 11f
         cap.visibility = View.GONE
         val body = LinearLayout(this)
@@ -855,6 +1113,7 @@ class MainActivity : Activity() {
     }
 
     private fun handleStep(phase: String, tool: String, args: String, ok: Boolean, result: String) {
+        if (stopRequested) return
         brain.pulse(tool)
         if (typing != null) hideTyping()
         val c = card ?: newCard().also {
@@ -900,6 +1159,7 @@ class MainActivity : Activity() {
     }
 
     private fun onPreview(b: Bitmap?, note: String) {
+        if (stopRequested) return
         val c = card ?: lastCard ?: return
         val stick = nearBottom()
         c.shot = b
@@ -1007,8 +1267,8 @@ class MainActivity : Activity() {
         box.setPadding(dp(8), dp(8), dp(8), dp(8))
         box.background = GradientDrawable().apply {
             cornerRadius = dp(14).toFloat()
-            setColor(0xFF101010.toInt())
-            setStroke(dp(1), 0x55E5484D)
+            setColor(0xFF1B2130.toInt())
+            setStroke(dp(1), 0x55B9AAFF)
         }
 
         val width = dp(if (compact) 148 else 248)
@@ -1034,7 +1294,7 @@ class MainActivity : Activity() {
             if (a.ready) "" else "Processing · "
         ) + a.name
         label.textSize = 12f
-        label.setTextColor(0xFFFAF7F2.toInt())
+        label.setTextColor(0xFFF3F0EB.toInt())
         label.maxLines = 2
         label.ellipsize = android.text.TextUtils.TruncateAt.END
         label.setPadding(dp(3), dp(7), dp(3), dp(3))

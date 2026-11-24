@@ -12,9 +12,9 @@ import android.widget.TextView
 import android.widget.Toast
 
 object Settings {
-    private const val INK = 0xFFFAF7F2.toInt()
-    private const val DIM = 0xFFB8ADA5.toInt()
-    private const val CYAN = 0xFFE5484D.toInt()
+    private const val INK = 0xFFF3F0EB.toInt()
+    private const val DIM = 0xFFA9B2C7.toInt()
+    private const val CYAN = 0xFFB9AAFF.toInt()
 
     fun show(a: Activity, onAgent: () -> Unit, agentLabel: () -> String) {
         val den = a.resources.displayMetrics.density
@@ -22,36 +22,102 @@ object Settings {
         val ui = Handler(Looper.getMainLooper())
         val (d, box) = Ui2.sheet(a)
         val t = TextView(a)
-        t.text = "SETTINGS"
+        t.text = "Make SAANN yours"
         t.setTextColor(INK)
-        t.textSize = 15f
-        t.letterSpacing = 0.2f
+        t.textSize = 23f
+        t.letterSpacing = 0f
         t.setTypeface(t.typeface, Typeface.BOLD)
         box.addView(t)
+        // SAANN_SECONDARY_UI_V1
+        val scroller = android.widget.ScrollView(a).apply {
+            isFillViewport = false
+            isVerticalScrollBarEnabled = false
+        }
+        val content = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        scroller.addView(content)
+        val windowHeight = a.resources.displayMetrics.heightPixels
+        box.addView(
+            scroller,
+            LinearLayout.LayoutParams(
+                MATCH_PARENT,
+                minOf(dp(520), (windowHeight * 0.62f).toInt())
+            )
+        )
+
+        var sectionAccent = CYAN
+
+        fun section(title: String, color: Int) {
+            sectionAccent = color
+            content.addView(TextView(a).apply {
+                text = title
+                textSize = 12f
+                letterSpacing = 0.08f
+                setTextColor(color)
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(dp(4), dp(22), dp(4), dp(9))
+            })
+        }
+
         val prefs = a.getSharedPreferences("saann_voice", 0)
 
         fun row(title: String, value: () -> String, click: () -> Unit): TextView {
             val r = LinearLayout(a)
             r.gravity = Gravity.CENTER_VERTICAL
-            r.setPadding(0, dp(13), 0, dp(13))
+            r.setPadding(dp(14), dp(14), dp(14), dp(14))
+            r.minimumHeight = dp(56)
+            r.background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(17).toFloat()
+                setColor(0xFF242B3A.toInt())
+                setStroke(
+                    dp(1),
+                    (sectionAccent and 0x00FFFFFF) or 0x22000000
+                )
+            }
             val n = TextView(a)
             n.text = title
             n.setTextColor(INK)
-            n.textSize = 16f
+            n.textSize = 15f
+            n.setPadding(0, 0, dp(12), 0)
             r.addView(n, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             val v = TextView(a)
             v.text = value()
-            v.setTextColor(CYAN)
+            v.setTextColor(sectionAccent)
+            v.maxLines = 2
+            v.maxWidth = dp(112)
+            v.gravity = Gravity.END
             v.textSize = 14f
             r.addView(v)
             r.setOnClickListener {
                 click()
                 ui.postDelayed({ v.text = value() }, 700)
             }
-            box.addView(r, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+            pressFx(r)
+            content.addView(
+                r,
+                LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
+                    bottomMargin = dp(7)
+                }
+            )
             return v
         }
 
+        section("CONNECTIONS", 0xFFB9AAFF.toInt())
+        row("Setup & connections", { "Manage" }) {
+            d.dismiss()
+            Onboarding.show(a)
+        }
+        row("Models & connection status", { "View" }) {
+            d.dismiss()
+            SaannConnections.show(a)
+        }
+        row("Brain details", { "View" }) {
+            d.dismiss()
+            BrainDetail.show(a)
+        }
+
+        section("VOICE & SOUND", 0xFF9DD6C4.toInt())
         row("Speak replies", { if (Voice.speakReplies) "On" else "Off" }) {
             Voice.command(a, if (Voice.speakReplies) "off" else "on")
         }
@@ -70,6 +136,7 @@ object Settings {
         }) {
             CloudVoice.show(a)
         }
+        section("ASSISTANCE & TASKS", 0xFFE8BC9F.toInt())
         row("Agent", { agentLabel().removePrefix("AGENT ").lowercase().replaceFirstChar { it.uppercase() } }) { onAgent() }
         row("Online help", { "Check" }) {
             Thread {
@@ -78,6 +145,10 @@ object Settings {
             }.start()
         }
         row("Run tasks now", { "Go" }) { AgentService.runDue(a) }
+        d.setOnDismissListener {
+            ui.removeCallbacksAndMessages(null)
+        }
         d.show()
+        d.window?.setLayout(MATCH_PARENT, WRAP_CONTENT)
     }
 }

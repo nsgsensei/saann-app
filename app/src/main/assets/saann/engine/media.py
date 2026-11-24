@@ -213,7 +213,17 @@ def _gemini_file(path, question):
     url = cloud.PROVIDERS["gemini"]["url"].format(model=model)
     d = cloud._post(url, body, {"Content-Type": "application/json", "x-goog-api-key": k}, 120)
     s = cloud.state(); s["used"]["gemini"] = s["used"].get("gemini", 0) + 1; cloud._save_state(s)
-    return d["candidates"][0]["content"]["parts"][0]["text"].strip()
+    parts = d.get("candidates", [{}])[0].get(
+        "content", {}
+    ).get("parts", [])
+    text = "\n".join(
+        part.get("text", "")
+        for part in parts
+        if not part.get("thought") and isinstance(part.get("text"), str)
+    ).strip()
+    if not text:
+        raise RuntimeError("The image model returned no usable text.")
+    return text
 
 
 def _cf_see(path, question):
@@ -386,24 +396,196 @@ def _safe_name(s, n=28):
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:n] or "image"
 
 
-def generate_image(prompt):
-    """(path, None) or (None, reason). Saved in the Library folder."""
-    k = cloud.keys()
-    if not (k.get("cloudflare") and k.get(CF_ACCT)):
-        return None, "Image generation needs a free Cloudflare account. Say /setup cloudflare."
-    if not online_ok():
-        return None, "Online help is off. Say /cloud on and I'll draw it."
-    try:
-        r = _cf_run(CF_IMAGE, {"prompt": prompt[:1000], "steps": 4})
-        raw = base64.b64decode(r["image"])
-    except Exception as e:
-        return None, "I couldn't generate that (%s)." % _why(e)
-    ext = "png" if raw[:4] == b"\x89PNG" else "jpg"
+# SAANN_IMAGE_PIPELINE_V1
+def _image_extension(raw):
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if raw.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if (
+        len(raw) >= 12
+        and raw[:4] == b"RIFF"
+        and raw[8:12] == b"WEBP"
+    ):
+        return "webp"
+    raise RuntimeError("The provider did not return a supported image.")
+
+
+def _save_image_bytes(raw, label):
+    import uuid
+
+    if not raw or len(raw) > 25 * 1024 * 1024:
+        raise RuntimeError("The returned image is empty or too large.")
+
+    extension = _image_extension(raw)
     UPLOADS.mkdir(parents=True, exist_ok=True)
-    p = UPLOADS / ("%d-image-%s.%s" % (int(time.time() * 1000), _safe_name(prompt), ext))
-    p.write_bytes(raw)
-    s = cloud.state(); s["used"]["cloudflare"] = s["used"].get("cloudflare", 0) + 1; cloud._save_state(s)
-    return str(p), None
+    path = UPLOADS / (
+        "%d-%s-%s.%s" % (
+            int(time.time() * 1000),
+            _safe_name(label),
+            uuid.uuid4().hex[:8],
+            extension
+        )
+    )
+    temporary = path.with_suffix(path.suffix + ".part")
+    try:
+        temporary.write_bytes(raw)
+        temporary.replace(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return str(path)
+
+
+def generate_image(prompt):
+    """Return (saved image path, None), or (None, safe error)."""
+    keys = cloud.keys()
+    if not (keys.get("cloudflare") and keys.get(CF_ACCT)):
+        return None, (
+            "Connect Cloudflare in Setup to generate images. "
+            "Both its Account ID and Workers AI token are required."
+        )
+    if not online_ok():
+        return None, "Online image generation is disabled. Enable it in Setup."
+
+    try:
+        result = _cf_run(
+            CF_IMAGE,
+            {"prompt": prompt[:1000], "steps": 4}
+        )
+        encoded = result.get("image")
+        if not isinstance(encoded, str):
+            raise RuntimeError("No image was returned.")
+        raw = base64.b64decode(encoded, validate=True)
+        path = _save_image_bytes(raw, prompt)
+
+        state = cloud.state()
+        state["used"]["cloudflare"] = (
+            state["used"].get("cloudflare", 0) + 1
+        )
+        cloud._save_state(state)
+        return path, None
+    except Exception as exc:
+        return None, "Image generation failed: " + _image_error(exc)
+
+
+def _image_error(exc):
+    if isinstance(exc, urllib.error.HTTPError):
+        return {
+            400: "the model rejected the image or request settings.",
+            401: "the provider rejected the credential.",
+            403: "the account or credential lacks access.",
+            404: "the selected image model is unavailable.",
+            413: "the image is too large.",
+            429: "the provider's quota or rate limit was reached.",
+            500: "the provider encountered a server error.",
+            503: "the provider is temporarily unavailable."
+        }.get(
+            exc.code,
+            "provider request failed (HTTP %s)." % exc.code
+        )
+    return (
+        "No usable result was returned. Check connectivity, "
+        "image format, and model access."
+    )
+
+
+def edit_image(path, instruction):
+    """Edit the supplied image, never overwrite the original."""
+    if not online_ok():
+        return None, "Online image editing is disabled. Enable it in Setup."
+
+    key = cloud.keys().get("gemini")
+    if not key:
+        return None, "Connect Gemini in Setup to edit images."
+
+    source = Path(path)
+    if not source.is_file():
+        return None, "The selected image could not be found."
+    if not instruction.strip():
+        return None, "Describe what you want changed in the image."
+
+    try:
+        if source.stat().st_size > 10 * 1024 * 1024:
+            return None, "Choose an image smaller than 10 MB for editing."
+
+        raw = source.read_bytes()
+        extension = _image_extension(raw)
+        mime = {
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "webp": "image/webp"
+        }[extension]
+
+        # Separate image-edit model; never replace the chat-model setting.
+        model = cloud.state().get("models", {}).get(
+            "gemini_image", "gemini-2.5-flash-image"
+        )
+        body = {
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    {"inlineData": {
+                        "mimeType": mime,
+                        "data": base64.b64encode(raw).decode("ascii")
+                    }},
+                    {"text": (
+                        "Edit the supplied image according to this request. "
+                        "Preserve everything not requested to change.\n"
+                        + instruction
+                    )}
+                ]
+            }],
+            "generationConfig": {
+                "responseModalities": ["TEXT", "IMAGE"]
+            }
+        }
+
+        result = cloud._post(
+            cloud.PROVIDERS["gemini"]["url"].format(model=model),
+            body,
+            {"Content-Type": "application/json", "x-goog-api-key": key},
+            120
+        )
+
+        state = cloud.state()
+        state["used"]["gemini"] = state["used"].get("gemini", 0) + 1
+        cloud._save_state(state)
+
+        for candidate in result.get("candidates", []):
+            for part in candidate.get("content", {}).get("parts", []):
+                if part.get("thought"):
+                    continue
+                inline = part.get("inlineData") or part.get("inline_data")
+                if not isinstance(inline, dict):
+                    continue
+                encoded = inline.get("data")
+                if encoded:
+                    output = base64.b64decode(encoded, validate=True)
+                    return _save_image_bytes(
+                        output, "edited-" + source.stem
+                    ), None
+
+        return None, (
+            "The model returned no edited image. It may have declined "
+            "the request or the account may not support this operation. "
+            "Your original image is unchanged."
+        )
+    except Exception as exc:
+        return None, (
+            "Image editing failed: " + _image_error(exc)
+            + " Your original image is unchanged."
+        )
+
+
+def _editing_reply(path, instruction):
+    edited, error = edit_image(path, instruction)
+    if not edited:
+        return error
+    return (
+        "Here is the edited image. Your original is unchanged.\n"
+        "[image: %s]\nSaved in your Library." % edited
+    )
 
 
 # ---------------------------------------------------------------- finding the latest upload
@@ -505,10 +687,28 @@ def process(msg):
         q = "" if q.lower().startswith("look at the attachment") else q
         if kind == "pdf":
             return read_pdf(path, q or None)
-        if kind == "image" and online_ok():
+        if kind == "image":
+            if not online_ok():
+                return (
+                    "answer",
+                    "Online image processing is disabled. "
+                    "Connect a provider in Setup to analyze or edit this image."
+                )
+
+            if re.match(
+                r"^(?:please\s+)?(?:edit|modify|retouch|recolor|"
+                r"remove|replace|crop|blur|brighten|darken)\b",
+                q, re.I
+            ):
+                return ("answer", _editing_reply(path, q))
+
             t, why = see(path, q or None)
             if t:
                 return ("answer", t)
+            return (
+                "answer",
+                "I couldn't analyze the attached image. " + (why or "")
+            )
         return None
     d = DRAW.match(msg.strip().rstrip(".!?"))
     if d:

@@ -374,20 +374,49 @@ def setup_api(operation, payload="{}"):
                     "ok": False, "message": "Enter the API key first."
                 })
 
-            _setup_credentials[name] = key
+            if any(ch.isspace() for ch in key):
+                return json.dumps({
+                    "ok": False,
+                    "message": (
+                        "The credential contains spaces or line breaks. "
+                        "Copy the complete secret again, without extra text."
+                    )
+                })
 
-            if name == "cloudflare":
-                account = str(data.get("account", "")).strip()
-                if not account:
-                    return json.dumps({
-                        "ok": False,
-                        "message": "Enter the Cloudflare Account ID."
-                    })
-                _setup_credentials["cloudflare_account"] = account
+            account = str(data.get("account", "")).strip()
+            if name == "cloudflare" and not account:
+                return json.dumps({
+                    "ok": False,
+                    "message": "Enter the Cloudflare Account ID."
+                })
 
-            result = cloud.test(name)
-            ok = result.startswith("working")
-            return json.dumps({"ok": ok, "message": result})
+            # Test credentials temporarily; roll back on every failure path.
+            previous_credentials = dict(_setup_credentials)
+            previous_models = dict(cloud.state().get("models", {}))
+            ok = False
+
+            try:
+                _setup_credentials[name] = key
+                if name == "cloudflare":
+                    _setup_credentials["cloudflare_account"] = account
+
+                # A deliberate user test must not reuse a cached success.
+                with connection_upgrade._lock:
+                    connection_upgrade._cache.clear()
+                    result = cloud.test(name)
+
+                ok = isinstance(result, str) and result.startswith("working")
+                return json.dumps({"ok": ok, "message": result})
+            finally:
+                if not ok:
+                    _setup_credentials.clear()
+                    _setup_credentials.update(previous_credentials)
+                    restored = cloud.state()
+                    if name in previous_models:
+                        restored["models"][name] = previous_models[name]
+                    else:
+                        restored["models"].pop(name, None)
+                    cloud._save_state(restored)
 
         if operation == "image_test":
             # Explicitly requested by the user in the setup screen.
@@ -503,3 +532,28 @@ def brain_view():
         report["association_snapshot_error"] = "Snapshot unavailable"
 
     return json.dumps(report)
+
+
+# SAANN_UI_CONNECTION_SNAPSHOT_V1
+def ui_connection_snapshot():
+    """Local configuration only. Never returns credentials or tests providers."""
+    import json
+    from engine import cloud
+
+    keys = cloud.keys()
+    providers = []
+    for name in ("gemini", "groq", "cloudflare"):
+        model = ""
+        try:
+            model = str(cloud.model_of(name) or "")
+        except Exception:
+            pass
+        configured = bool(keys.get(name))
+        if name == "cloudflare":
+            configured = configured and bool(keys.get("cloudflare_account"))
+        providers.append({
+            "name": name,
+            "configured": configured,
+            "model": model
+        })
+    return json.dumps({"providers": providers})

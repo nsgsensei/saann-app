@@ -14,26 +14,36 @@ import android.widget.Toast
 import org.json.JSONArray
 
 object Tasks {
-    private const val INK = 0xFFFAF7F2.toInt()
-    private const val DIM = 0xFFB8ADA5.toInt()
-    private const val CYAN = 0xFFE5484D.toInt()
+    private const val INK = 0xFFF3F0EB.toInt()
+    private const val DIM = 0xFFB0B9CB.toInt()
+    private const val CYAN = 0xFFE8BC9F.toInt()
 
     fun show(a: Activity) {
         val den = a.resources.displayMetrics.density
         fun dp(v: Int): Int = (v * den).toInt()
         val (d, box) = Ui2.sheet(a)
         val t = TextView(a)
-        t.text = "TASKS"
+        t.text = "A little structure"
         t.setTextColor(INK)
-        t.textSize = 15f
-        t.letterSpacing = 0.2f
+        t.textSize = 23f
+        t.letterSpacing = 0f
         t.setTypeface(t.typeface, Typeface.BOLD)
         box.addView(t)
         val sv = ScrollView(a)
         val body = LinearLayout(a)
         body.orientation = LinearLayout.VERTICAL
         sv.addView(body)
-        box.addView(sv, LinearLayout.LayoutParams(MATCH_PARENT, dp(340)))
+        sv.isVerticalScrollBarEnabled = false
+        box.addView(
+            sv,
+            LinearLayout.LayoutParams(
+                MATCH_PARENT,
+                minOf(
+                    dp(420),
+                    (a.resources.displayMetrics.heightPixels * 0.55f).toInt()
+                )
+            )
+        )
 
         fun toast(s: String) = a.runOnUiThread { Toast.makeText(a, s, Toast.LENGTH_LONG).show() }
 
@@ -92,7 +102,14 @@ object Tasks {
             add.text = "+  New task"
             add.setTextColor(CYAN)
             add.textSize = 15f
-            add.setPadding(0, dp(12), 0, dp(12))
+            add.setPadding(dp(16), dp(14), dp(16), dp(14))
+            add.minimumHeight = dp(52)
+            add.background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(17).toFloat()
+                setColor(0xFF352E2C.toInt())
+                setStroke(dp(1), 0x44E8BC9F)
+            }
+            pressFx(add)
             add.setOnClickListener { newTask() }
             body.addView(add)
             val arr = try { JSONArray(json) } catch (e: Exception) { JSONArray() }
@@ -107,16 +124,36 @@ object Tasks {
                 val o = arr.getJSONObject(i)
                 val row = LinearLayout(a)
                 row.orientation = LinearLayout.VERTICAL
-                row.setPadding(0, dp(8), 0, dp(8))
+                row.setPadding(dp(16), dp(14), dp(16), dp(14))
+                row.minimumHeight = dp(76)
+                row.background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = dp(18).toFloat()
+                    setColor(0xFF232B38.toInt())
+                    setStroke(
+                        dp(1),
+                        if (o.optBoolean("enabled")) 0x449DD6C4
+                        else 0x44E8BC9F
+                    )
+                }
+                row.layoutParams = LinearLayout.LayoutParams(
+                    MATCH_PARENT, WRAP_CONTENT
+                ).apply {
+                    topMargin = dp(10)
+                }
+                pressFx(row)
                 val n = TextView(a)
-                n.text = o.optString("name") + (if (o.optBoolean("enabled")) "" else "  (paused)")
-                n.setTextColor(INK)
+                n.text = o.optString("name") +
+                    (if (o.optBoolean("enabled")) " · Enabled" else " · Paused")
+                n.setTextColor(
+                    if (o.optBoolean("enabled")) INK else 0xFFE8BC9F.toInt()
+                )
                 n.textSize = 15f
                 row.addView(n)
                 val w = TextView(a)
                 w.text = o.optString("when") + " · next " + o.optString("next")
                 w.setTextColor(DIM)
                 w.textSize = 12f
+                w.setPadding(0, dp(7), 0, 0)
                 row.addView(w)
                 if (o.optString("last").isNotEmpty()) {
                     val l = TextView(a)
@@ -139,6 +176,7 @@ object Tasks {
             }.start()
         }
         d.show()
+        d.window?.setLayout(MATCH_PARENT, WRAP_CONTENT)
         load()
     }
 }

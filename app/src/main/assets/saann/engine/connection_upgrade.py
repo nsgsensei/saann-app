@@ -34,19 +34,71 @@ def _get(url, headers):
         return json.load(response)
 
 
+# SAANN_PROVIDER_RECOVERY_V4
 def _error(exc):
     if isinstance(exc, urllib.error.HTTPError):
         return {
-            400: "request rejected; model settings may be incompatible",
-            401: "authentication failed; check the secret key",
-            403: "access denied; check project/account permissions",
-            404: "model or endpoint unavailable",
-            429: "quota or rate limit reached",
-            500: "provider server error",
-            502: "provider gateway error",
-            503: "provider temporarily unavailable",
-        }.get(exc.code, "provider HTTP error %s" % exc.code)
-    return "network error or unexpected provider response"
+            400: (
+                "HTTP 400: the request or model settings were rejected. "
+                "This does not by itself mean the key is invalid."
+            ),
+            401: (
+                "HTTP 401: authentication failed. Copy the complete API "
+                "credential from this provider's official console. Check "
+                "whether it was revoked or expired. Never use your account "
+                "password as an API key."
+            ),
+            403: (
+                "HTTP 403: access was denied. Check the credential's "
+                "permissions, project/account access, and any provider "
+                "restrictions. Repeated retries will not grant access."
+            ),
+            404: (
+                "HTTP 404: the model or endpoint was not found. "
+                "SAANN can try another compatible model."
+            ),
+            408: (
+                "HTTP 408: the request timed out. Check connectivity "
+                "and try again shortly."
+            ),
+            429: (
+                "HTTP 429: a usage or rate limit was reached. "
+                "Wait before retrying and check your provider's quota "
+                "dashboard. SAANN will not enable billing automatically."
+            ),
+            500: (
+                "HTTP 500: the provider encountered a server error. "
+                "Try again later."
+            ),
+            502: (
+                "HTTP 502: the provider gateway failed. Try again later."
+            ),
+            503: (
+                "HTTP 503: the provider is temporarily unavailable. "
+                "Try again later."
+            ),
+            504: (
+                "HTTP 504: the provider gateway timed out. Try again later."
+            ),
+        }.get(
+            exc.code,
+            "Provider request failed (HTTP %s). "
+            "Check the provider's service status and account console."
+            % exc.code
+        )
+
+    if isinstance(exc, (TimeoutError, urllib.error.URLError)):
+        return (
+            "The provider could not be reached. Check your internet "
+            "connection and device date/time, then retry. "
+            "This does not establish that the key is invalid."
+        )
+
+    return (
+        "The provider response could not be processed. "
+        "This may be a response-format or compatibility issue, "
+        "not an invalid key."
+    )
 
 
 def _models(name, key):
@@ -148,10 +200,15 @@ def test(name):
             candidates = _models(name, key)
         except Exception as exc:
             discovery_error = _error(exc)
-            candidates = list(FALLBACKS.get(name, []))
 
+            # Do not turn denied access or rate limiting into a retry storm.
+            if isinstance(exc, urllib.error.HTTPError):
+                if exc.code in (401, 403, 429):
+                    return name + " model discovery: " + discovery_error
+
+            candidates = list(FALLBACKS.get(name, []))
             if not candidates:
-                return "model discovery: " + _error(exc)
+                return name + " model discovery: " + discovery_error
 
         if not candidates:
             return "key accepted, but no suitable text models were listed"
@@ -191,7 +248,7 @@ def test(name):
             except Exception as exc:
                 errors.append(model + ": " + _error(exc))
                 if isinstance(exc, urllib.error.HTTPError):
-                    if exc.code in (401, 403):
+                    if exc.code in (401, 403, 429, 500, 502, 503, 504):
                         break
 
         state = cloud.state()
