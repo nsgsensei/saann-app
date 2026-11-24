@@ -38,9 +38,9 @@ class SaannBootView(private val activity: Activity) : FrameLayout(activity) {
         background = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
             intArrayOf(
-                0xFF1D2036.toInt(),
+                0xFF151A26.toInt(),
                 0xFF10131D.toInt(),
-                0xFF142E30.toInt()
+                0xFF121A26.toInt()
             )
         )
 
@@ -80,8 +80,8 @@ class SaannBootView(private val activity: Activity) : FrameLayout(activity) {
 
         content.addView(TextView(activity).apply {
             text = "SAANN"
-            textSize = 29f
-            letterSpacing = 0.16f
+            textSize = 28f
+            letterSpacing = 0.10f
             gravity = Gravity.CENTER
             setTextColor(ink)
             setTypeface(typeface, Typeface.BOLD)
@@ -89,7 +89,11 @@ class SaannBootView(private val activity: Activity) : FrameLayout(activity) {
         })
 
         note.apply {
-            text = "Preparing your space…"
+            text = if (Onboarding.needed(activity)) {
+                "Preparing SAANN.\nSetting up your private AI space…"
+            } else {
+                "Preparing your space…"
+            }
             textSize = 14f
             gravity = Gravity.CENTER
             setTextColor(dim)
@@ -171,15 +175,17 @@ class SaannBootView(private val activity: Activity) : FrameLayout(activity) {
         super.onAttachedToWindow()
         if (finishing || failed) return
 
+        val firstRun = Onboarding.needed(activity)
         alpha = 0f
         animate()
             .alpha(1f)
-            .setDuration(180L)
+            .setDuration(if (firstRun) 420L else 160L)
             .setInterpolator(DecelerateInterpolator())
             .start()
 
+        val firstRun = Onboarding.needed(activity)
         orbit = ValueAnimator.ofFloat(0f, 360f).apply {
-            duration = 16000L
+            duration = if (firstRun) 26000L else 9000L
             repeatCount = ValueAnimator.INFINITE
             interpolator = LinearInterpolator()
             addUpdateListener {
@@ -188,7 +194,7 @@ class SaannBootView(private val activity: Activity) : FrameLayout(activity) {
             start()
         }
         pulse = ValueAnimator.ofFloat(0.35f, 0.95f).apply {
-            duration = 1100L
+            duration = if (firstRun) 1700L else 750L
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.REVERSE
             addUpdateListener {
@@ -202,11 +208,11 @@ class SaannBootView(private val activity: Activity) : FrameLayout(activity) {
         if (finishing) return
         finishing = true
         dispose()
-        note.text = "Ready"
+        note.text = "SAANN is ready"
         progress.alpha = 1f
         animate()
             .alpha(0f)
-            .setDuration(220L)
+            .setDuration(if (Onboarding.needed(activity)) 360L else 180L)
             .setInterpolator(DecelerateInterpolator())
             .withEndAction {
                 (parent as? ViewGroup)?.removeView(this)
