@@ -130,9 +130,9 @@ class MainActivity : Activity() {
         root.background = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
             intArrayOf(
-                0xFF151A29.toInt(),
+                0xFF141824.toInt(),
                 BG,
-                0xFF142126.toInt()
+                0xFF10131D.toInt()
             )
         )
         root.fitsSystemWindows = true
@@ -141,7 +141,7 @@ class MainActivity : Activity() {
         val head = LinearLayout(this)
         head.orientation = LinearLayout.HORIZONTAL
         head.gravity = Gravity.CENTER_VERTICAL
-        head.setPadding(dp(12), dp(8), dp(12), dp(8))
+        head.setPadding(dp(16), dp(10), dp(16), dp(10))
         orb = OrbView(this)
         val menu = IconView(this, "menu", INK)
         menu.contentDescription = "Chat history"
@@ -155,8 +155,8 @@ class MainActivity : Activity() {
         val title = TextView(this)
         title.text = "SAANN"
         title.setTextColor(INK)
-        title.textSize = 17f
-        title.letterSpacing = 0.12f
+        title.textSize = 16f
+        title.letterSpacing = 0.08f
         title.setTypeface(title.typeface, Typeface.BOLD)
         status = TextView(this)
         status.setTextColor(DIM)
@@ -180,7 +180,7 @@ class MainActivity : Activity() {
         root.addView(head)
 
         val line = View(this)
-        line.setBackgroundColor(0x3372CDB6)
+        line.setBackgroundColor(0x14FFFFFF)
         root.addView(line, LinearLayout.LayoutParams(MATCH_PARENT, dp(1)))
         brain = BrainView(this)
         brain.visibility = View.GONE
@@ -194,7 +194,7 @@ class MainActivity : Activity() {
         scroll.overScrollMode = View.OVER_SCROLL_ALWAYS
         chat = LinearLayout(this)
         chat.orientation = LinearLayout.VERTICAL
-        chat.setPadding(dp(12), dp(12), dp(12), dp(12))
+        chat.setPadding(dp(16), dp(16), dp(16), dp(24))
         scroll.addView(chat)
         holder.addView(scroll, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         jump = TextView(this)
@@ -224,15 +224,12 @@ class MainActivity : Activity() {
         // input: one row (+, text, mic, send) in a rounded card, chips on top
         val inCard = LinearLayout(this)
         inCard.orientation = LinearLayout.VERTICAL
-        inCard.setPadding(dp(8), dp(6), dp(8), dp(6))
+        inCard.setPadding(dp(10), dp(8), dp(10), dp(8))
         val cg = GradientDrawable()
         cg.cornerRadius = dp(28).toFloat()
-        cg.colors = intArrayOf(
-            0xFF23283A.toInt(),
-            0xFF1C2C31.toInt()
-        )
+        cg.setColor(0xFF1A1F2B.toInt())
         cg.orientation = GradientDrawable.Orientation.LEFT_RIGHT
-        cg.setStroke(dp(1), 0x55B9AAFF)
+        cg.setStroke(dp(1), 0x1FFFFFFF)
         inCard.background = cg
         chips = LinearLayout(this)
         chips.orientation = LinearLayout.HORIZONTAL
@@ -249,7 +246,7 @@ class MainActivity : Activity() {
         input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or
             InputType.TYPE_TEXT_FLAG_MULTI_LINE
         input.background = null
-        input.setPadding(dp(6), dp(8), dp(6), dp(8))
+        input.setPadding(dp(8), dp(10), dp(8), dp(10))
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
         row.gravity = Gravity.CENTER_VERTICAL
@@ -274,8 +271,8 @@ class MainActivity : Activity() {
         inCard.layoutTransition = lt
         input.setOnFocusChangeListener { _, f ->
             val va = android.animation.ValueAnimator.ofObject(android.animation.ArgbEvaluator(),
-                if (f) 0x5572CDB6 else 0x99AFC8EF.toInt(),
-                if (f) 0x99AFC8EF.toInt() else 0x5572CDB6)
+                if (f) 0x66B9AAFF else 0x1FFFFFFF,
+                if (f) 0x1FFFFFFF else 0x66B9AAFF)
             va.duration = 160
             va.addUpdateListener { cg.setStroke(dp(1), it.animatedValue as Int) }
             va.start()
@@ -290,7 +287,7 @@ class MainActivity : Activity() {
         row.addView(send, slp)
         inCard.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         val bar = FrameLayout(this)
-        bar.setPadding(dp(10), dp(6), dp(10), dp(6))
+        bar.setPadding(dp(14), dp(8), dp(14), dp(10))
         bar.addView(inCard, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(bar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         root.addView(Ui2.navBar(this), LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
@@ -858,7 +855,7 @@ class MainActivity : Activity() {
         tv.text = text
         tv.setTextColor(if (mine) INK else BODY)
         tv.textSize = 16f
-        tv.setLineSpacing(dp(3).toFloat(), 1.05f)
+        tv.setLineSpacing(dp(3).toFloat(), 1.18f)
         tv.setTextIsSelectable(true)
 
         val lp = LinearLayout.LayoutParams(
@@ -866,15 +863,15 @@ class MainActivity : Activity() {
             WRAP_CONTENT
         )
         lp.gravity = if (mine) Gravity.END else Gravity.START
-        lp.topMargin = dp(if (mine) 10 else 14)
-        lp.bottomMargin = dp(4)
+        lp.topMargin = dp(if (mine) 14 else 18)
+        lp.bottomMargin = dp(6)
 
         if (mine) {
             tv.maxWidth = (resources.displayMetrics.widthPixels * 0.86f).toInt()
-            tv.setPadding(dp(14), dp(10), dp(14), dp(10))
+            tv.setPadding(dp(16), dp(12), dp(16), dp(12))
             tv.background = GradientDrawable().apply {
-                cornerRadius = dp(18).toFloat()
-                setColor(0xFF29263C.toInt())
+                cornerRadius = dp(20).toFloat()
+                setColor(0xFF232A3A.toInt())
                 setStroke(dp(1), 0x55B9AAFF)
             }
         } else {
@@ -1287,7 +1284,7 @@ class MainActivity : Activity() {
         box.background = GradientDrawable().apply {
             cornerRadius = dp(14).toFloat()
             setColor(0xFF1B2130.toInt())
-            setStroke(dp(1), 0x55B9AAFF)
+            setStroke(dp(1), 0x22B9AAFF)
         }
 
         val width = dp(if (compact) 148 else 248)

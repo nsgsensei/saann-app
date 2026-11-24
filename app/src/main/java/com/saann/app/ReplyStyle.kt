@@ -37,7 +37,7 @@ object ReplyStyle {
                         TypefaceSpan("monospace"), start, out.length, flag
                     )
                     out.setSpan(
-                        BackgroundColorSpan(0xFF202020.toInt()),
+                        BackgroundColorSpan(0xFF232833.toInt()),
                         start, out.length, flag
                     )
                 }
@@ -64,7 +64,7 @@ object ReplyStyle {
                     RelativeSizeSpan(0.88f), start, out.length, flag
                 )
                 out.setSpan(
-                    BackgroundColorSpan(0xFF101010.toInt()),
+                    BackgroundColorSpan(0xFF0D1117.toInt()),
                     start, out.length, flag
                 )
                 continue

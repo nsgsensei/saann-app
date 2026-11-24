@@ -146,7 +146,7 @@ object Ui2 {
         val g = GradientDrawable()
         g.setColor(PANEL)
         g.cornerRadii = floatArrayOf(28 * den, 28 * den, 28 * den, 28 * den, 0f, 0f, 0f, 0f)
-        g.setStroke((1 * den).toInt(), 0x3372CDB6)
+        g.setStroke((1 * den).toInt(), 0x14FFFFFF)
         box.background = g
         val grab = View(a)
         val gg = GradientDrawable(); gg.cornerRadius = 3 * den; gg.setColor(0x55A9B2C7)
@@ -218,8 +218,11 @@ object Ui2 {
         val den = a.resources.displayMetrics.density
         val bar = LinearLayout(a)
         bar.orientation = LinearLayout.HORIZONTAL
-        bar.setBackgroundColor(0xFF10131D.toInt())
-        bar.setPadding(0, (6 * den).toInt(), 0, (6 * den).toInt())
+        val barBg = GradientDrawable()
+        barBg.setColor(0xFF0D101A.toInt())
+        barBg.setStroke((1 * den).toInt(), 0x14FFFFFF)
+        bar.background = barBg
+        bar.setPadding(0, (8 * den).toInt(), 0, (8 * den).toInt())
         val items = listOf(Triple("chat", "Chat", true), Triple("saann", "SAANN", false), Triple("tasks", "Tasks", false), Triple("library", "Library", false))
         for ((k, n, on) in items) {
             val accent = when (k) {
@@ -235,7 +238,7 @@ object Ui2 {
             c.contentDescription = n
             c.addView(IconView(a, k, accent), LinearLayout.LayoutParams((22 * den).toInt(), (22 * den).toInt()))
             val l = TextView(a)
-            l.text = n; l.textSize = 11f; l.setTextColor(if (on || k == "saann") accent else DIM); l.gravity = Gravity.CENTER
+            l.text = n; l.textSize = 11f; l.setTextColor(if (on || k == "saann") accent else 0xFF8A93A6.toInt()); l.gravity = Gravity.CENTER
             c.addView(l)
             if (on) c.setOnClickListener { onChatTap?.invoke() }
             else if (k == "saann") c.setOnClickListener {
