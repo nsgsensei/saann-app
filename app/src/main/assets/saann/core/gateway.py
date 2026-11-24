@@ -36,45 +36,47 @@ def _local(prompt, max_tokens, schema, temperature, tier="main"):
                  body, {"Content-Type": "application/json"})
     return data["choices"][0]["message"]["content"].strip(), cfg["model"]
 
-def _cloud_diagnostics():
-    try:
-        from engine import cloud
+def _cloud(prompt, max_tokens, schema, temperature):
+    from engine import cloud
 
-        result = cloud.complete(
-            prompt,
-            max_tokens,
-            schema,
-            temperature,
-            SYSTEM
-        )
+    result = cloud.complete(
+        prompt,
+        max_tokens=max_tokens,
+        schema=schema,
+        temperature=temperature,
+        system=SYSTEM,
+    )
 
-        if result:
-            return result
-
-        reason = _cloud_diagnostics()
-    except Exception as exc:
-        reason = str(exc) or exc.__class__.__name__
-
-    key = os.environ.get("ANTHROPIC_API_KEY")
-
-    if not key:
+    if not result:
         raise RuntimeError(
             "Cloud providers unavailable. "
-            + reason
-            + " Run /cloud test for provider diagnostics."
+            "Run /cloud test for provider diagnostics."
         )
-    if schema:
-        prompt += "\n\nReply with ONLY valid JSON matching this schema:\n" + json.dumps(schema)
-    m = models.get(models.load()["active_cloud"])
-    data = _post("https://api.anthropic.com/v1/messages", {
-        "model": m["model"], "max_tokens": max_tokens, "system": SYSTEM,
-        "temperature": temperature,
-        "messages": [{"role": "user", "content": prompt}]},
-        {"content-type": "application/json", "x-api-key": key,
-         "anthropic-version": "2023-06-01"})
-    u = data.get("usage", {})
-    models.add_usage(u.get("input_tokens", 0) + u.get("output_tokens", 0))
-    return data["content"][0]["text"].strip(), m["id"]
+
+    return result
+
+
+def _cloud_diagnostics():
+    from engine import cloud
+
+    connected = cloud.connected()
+    if not connected:
+        return "No cloud provider key is saved. Run /setup."
+
+    lines = []
+    for name in connected:
+        state = cloud.state()
+        used = state["used"].get(name, 0)
+        daily = cloud.PROVIDERS[name]["daily"]
+        cooling = state["cool"].get(name, 0) > __import__("time").time()
+        lines.append(
+            "%s: %d of about %d requests today%s"
+            % (cloud.PROVIDERS[name]["name"], used, daily,
+               " (temporarily paused)" if cooling else "")
+        )
+
+    return "; ".join(lines)
+
 
 def ask(agent, prompt, task_type="general", private=False, hard=False,
         max_tokens=300, schema=None, temperature=0.3, force=None,
